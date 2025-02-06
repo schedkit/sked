@@ -1,0 +1,27 @@
+# permissions for end users to edit schedexts.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: sked
+    app.kubernetes.io/managed-by: kustomize
+  name: schedext-editor-role
+rules:
+- apiGroups:
+  - sked.schedkit.io
+  resources:
+  - schedexts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - sked.schedkit.io
+  resources:
+  - schedexts/status
+  verbs:
+  - get

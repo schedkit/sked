@@ -1,0 +1,23 @@
+# permissions for end users to view schedexts.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: sked
+    app.kubernetes.io/managed-by: kustomize
+  name: schedext-viewer-role
+rules:
+- apiGroups:
+  - sked.schedkit.io
+  resources:
+  - schedexts
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - sked.schedkit.io
+  resources:
+  - schedexts/status
+  verbs:
+  - get

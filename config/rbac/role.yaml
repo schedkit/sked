@@ -1,0 +1,32 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - sked.schedkit.io
+  resources:
+  - schedexts
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - sked.schedkit.io
+  resources:
+  - schedexts/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - sked.schedkit.io
+  resources:
+  - schedexts/status
+  verbs:
+  - get
+  - patch
+  - update

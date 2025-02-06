@@ -1,0 +1,9 @@
+apiVersion: sked.schedkit.io/v1
+kind: SchedExt
+metadata:
+  labels:
+    app.kubernetes.io/name: sked
+    app.kubernetes.io/managed-by: kustomize
+  name: schedext-sample
+spec:
+  sched: "ghcr.io/schedkit/scheds/scx_rusty:latest"

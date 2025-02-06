@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- sked_v1_schedext.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples
