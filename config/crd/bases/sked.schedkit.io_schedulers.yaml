@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.4
-  name: schedexts.sked.schedkit.io
+  name: schedulers.sked.schedkit.io
 spec:
   group: sked.schedkit.io
   names:
-    kind: SchedExt
-    listKind: SchedExtList
-    plural: schedexts
-    singular: schedext
+    kind: Scheduler
+    listKind: SchedulerList
+    plural: schedulers
+    singular: scheduler
   scope: Namespaced
   versions:
   - name: v1
     schema:
       openAPIV3Schema:
-        description: SchedExt is the Schema for the schedexts API.
+        description: Scheduler is the Schema for the schedulers API.
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: SchedExtSpec defines the desired state of SchedExt.
+            description: SchedulerSpec defines the desired state of Scheduler.
             properties:
               sched:
                 description: Sched specifies the URI of the OCI scheduler artifact
@@ -46,7 +46,7 @@ spec:
             - sched
             type: object
           status:
-            description: SchedExtStatus defines the observed state of SchedExt.
+            description: SchedulerStatus defines the observed state of Scheduler.
             type: object
         type: object
     served: true

@@ -30,7 +30,7 @@ import (
 	skedv1 "github.com/schedkit/sked/api/v1"
 )
 
-var _ = Describe("SchedExt Controller", func() {
+var _ = Describe("Scheduler Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
 
@@ -40,13 +40,13 @@ var _ = Describe("SchedExt Controller", func() {
 			Name:      resourceName,
 			Namespace: "default", // TODO(user):Modify as needed
 		}
-		schedext := &skedv1.SchedExt{}
+		scheduler := &skedv1.Scheduler{}
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind SchedExt")
-			err := k8sClient.Get(ctx, typeNamespacedName, schedext)
+			By("creating the custom resource for the Kind Scheduler")
+			err := k8sClient.Get(ctx, typeNamespacedName, scheduler)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &skedv1.SchedExt{
+				resource := &skedv1.Scheduler{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
@@ -59,16 +59,16 @@ var _ = Describe("SchedExt Controller", func() {
 
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &skedv1.SchedExt{}
+			resource := &skedv1.Scheduler{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Cleanup the specific resource instance SchedExt")
+			By("Cleanup the specific resource instance Scheduler")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			controllerReconciler := &SchedExtReconciler{
+			controllerReconciler := &SchedulerReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}

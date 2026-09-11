@@ -32,22 +32,22 @@ import (
 	skedv1 "github.com/schedkit/sked/api/v1"
 )
 
-// SchedExtReconciler reconciles a SchedExt object
-type SchedExtReconciler struct {
+// SchedulerReconciler reconciles a Scheduler object
+type SchedulerReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=sked.schedkit.io,resources=schedexts,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=sked.schedkit.io,resources=schedexts/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=sked.schedkit.io,resources=schedexts/finalizers,verbs=update
+// +kubebuilder:rbac:groups=sked.schedkit.io,resources=schedulers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=sked.schedkit.io,resources=schedulers/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=sked.schedkit.io,resources=schedulers/finalizers,verbs=update
 
-func (r *SchedExtReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *SchedulerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	var scx skedv1.SchedExt
+	var scx skedv1.Scheduler
 	if err := r.Get(ctx, req.NamespacedName, &scx); err != nil {
-		logger.Error(err, "unable to fetch SchedExt")
+		logger.Error(err, "unable to fetch Scheduler")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -107,9 +107,9 @@ func (r *SchedExtReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *SchedExtReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *SchedulerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&skedv1.SchedExt{}).
-		Named("schedext").
+		For(&skedv1.Scheduler{}).
+		Named("scheduler").
 		Complete(r)
 }

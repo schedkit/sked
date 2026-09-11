@@ -7,7 +7,7 @@ rules:
 - apiGroups:
   - sked.schedkit.io
   resources:
-  - schedexts
+  - schedulers
   verbs:
   - create
   - delete
@@ -19,13 +19,13 @@ rules:
 - apiGroups:
   - sked.schedkit.io
   resources:
-  - schedexts/finalizers
+  - schedulers/finalizers
   verbs:
   - update
 - apiGroups:
   - sked.schedkit.io
   resources:
-  - schedexts/status
+  - schedulers/status
   verbs:
   - get
   - patch

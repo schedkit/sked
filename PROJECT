@@ -14,7 +14,7 @@ resources:
   controller: true
   domain: schedkit.io
   group: sked
-  kind: SchedExt
+  kind: Scheduler
   path: github.com/schedkit/sked/api/v1
   version: v1
 version: "3"
