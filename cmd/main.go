@@ -144,11 +144,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.SchedExtReconciler{
+	if err = (&controller.SchedulerReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "SchedExt")
+		setupLog.Error(err, "unable to create controller", "controller", "Scheduler")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
