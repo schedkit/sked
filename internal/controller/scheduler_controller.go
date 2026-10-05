@@ -38,6 +38,7 @@ type SchedulerReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+// +kubebuilder:rbac:groups=apps,resources=daemonsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sked.schedkit.io,resources=schedulers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sked.schedkit.io,resources=schedulers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=sked.schedkit.io,resources=schedulers/finalizers,verbs=update
