@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"slices"
@@ -28,11 +29,10 @@ import (
 func TestManagerClusterRoleGrantsDaemonSetAccess(t *testing.T) {
 	roleFile := filepath.Join(projectRoot(t), "config", "rbac", "role.yaml")
 
-	f, err := os.Open(roleFile)
+	data, err := os.ReadFile(roleFile)
 	if err != nil {
-		t.Fatalf("opening generated ClusterRole %q: %v", roleFile, err)
+		t.Fatalf("reading generated ClusterRole %q: %v", roleFile, err)
 	}
-	defer f.Close()
 
 	var role struct {
 		Rules []struct {
@@ -41,7 +41,7 @@ func TestManagerClusterRoleGrantsDaemonSetAccess(t *testing.T) {
 			Verbs     []string `json:"verbs"`
 		} `json:"rules"`
 	}
-	if err := yaml.NewYAMLOrJSONDecoder(f, 4096).Decode(&role); err != nil {
+	if err := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(data), 4096).Decode(&role); err != nil {
 		t.Fatalf("decoding generated ClusterRole %q: %v", roleFile, err)
 	}
 
