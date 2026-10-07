@@ -123,6 +123,17 @@ func TestValidateCreate(t *testing.T) {
 		g.Expect(err).NotTo(HaveOccurred())
 	})
 
+	t.Run("allows a scheduler in an allowed namespace", func(t *testing.T) {
+		g := NewWithT(t)
+		policy := trust.DefaultPolicy()
+		policy.AllowedNamespaces = []string{"schedulers"}
+		v := &SchedulerValidator{Policy: staticPolicy{policy}, Verifier: &fakeVerifier{}}
+		ctx := admission.NewContextWithRequest(context.Background(), requestWithIdentity("schedulers", "alice"))
+
+		_, err := v.ValidateCreate(ctx, scheduler("schedulers", trustedImage))
+		g.Expect(err).NotTo(HaveOccurred())
+	})
+
 	t.Run("rejects a disallowed namespace", func(t *testing.T) {
 		g := NewWithT(t)
 		policy := trust.DefaultPolicy()
