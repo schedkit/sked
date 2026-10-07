@@ -31,8 +31,10 @@ type SchedulerSpec struct {
 
 // SchedulerStatus defines the observed state of Scheduler.
 type SchedulerStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// ResolvedImage is the digest-pinned reference of the verified scheduler image
+	// that the controller scheduled. It lets operators audit the exact content
+	// that is running.
+	ResolvedImage string `json:"resolvedImage,omitempty"`
 }
 
 // +kubebuilder:object:root=true

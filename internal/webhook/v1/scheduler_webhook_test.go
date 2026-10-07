@@ -41,9 +41,12 @@ type fakeVerifier struct {
 	calls []string
 }
 
-func (f *fakeVerifier) Verify(_ context.Context, imageRef string) error {
+func (f *fakeVerifier) Verify(_ context.Context, imageRef string) (string, error) {
 	f.calls = append(f.calls, imageRef)
-	return f.err
+	if f.err != nil {
+		return "", f.err
+	}
+	return imageRef, nil
 }
 
 func requestWithIdentity(namespace, username string, groups ...string) admission.Request {

@@ -170,12 +170,14 @@ func TestE2E(t *testing.T) {
 		})
 
 		applyScheduler(t, schedulerName, testSchedulerImage)
-		waitForDaemonSetImage(t, schedulerName, testSchedulerImage)
+		firstResolved := waitForSchedulerResolvedImage(t, schedulerName)
+		waitForDaemonSetImage(t, schedulerName, firstResolved)
 		waitForDaemonSetRollout(t, schedulerName)
 		assertDaemonSetOwnedByScheduler(t, schedulerName)
 
 		applyScheduler(t, schedulerName, updatedSchedulerImage)
-		waitForDaemonSetImage(t, schedulerName, updatedSchedulerImage)
+		secondResolved := waitForSchedulerResolvedImageChange(t, schedulerName, firstResolved)
+		waitForDaemonSetImage(t, schedulerName, secondResolved)
 		waitForDaemonSetRollout(t, schedulerName)
 
 		deleteScheduler(t, schedulerName)
@@ -221,6 +223,47 @@ func waitForDaemonSetImage(t *testing.T, name, image string) {
 		}
 		assert.Equal(c, image, output, "DaemonSet %s has the wrong scheduler image", name)
 	}, eventuallyTimeout, eventuallyTick)
+}
+
+func waitForSchedulerResolvedImage(t *testing.T, name string) string {
+	t.Helper()
+
+	var resolved string
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		cmd := exec.Command("kubectl", "get", "scheduler", name, "-n", namespace,
+			"-o", "jsonpath={.status.resolvedImage}")
+		output, err := utils.Run(cmd)
+		if !assert.NoError(c, err) {
+			return
+		}
+		if !assert.Contains(c, output, "@sha256:", "Scheduler %s image is not pinned to a digest", name) {
+			return
+		}
+		resolved = output
+	}, eventuallyTimeout, eventuallyTick)
+	return resolved
+}
+
+func waitForSchedulerResolvedImageChange(t *testing.T, name, previous string) string {
+	t.Helper()
+
+	var resolved string
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		cmd := exec.Command("kubectl", "get", "scheduler", name, "-n", namespace,
+			"-o", "jsonpath={.status.resolvedImage}")
+		output, err := utils.Run(cmd)
+		if !assert.NoError(c, err) {
+			return
+		}
+		if !assert.Contains(c, output, "@sha256:", "Scheduler %s image is not pinned to a digest", name) {
+			return
+		}
+		if !assert.NotEqual(c, previous, output, "Scheduler %s resolved image did not change", name) {
+			return
+		}
+		resolved = output
+	}, eventuallyTimeout, eventuallyTick)
+	return resolved
 }
 
 func waitForDaemonSetRollout(t *testing.T, name string) {
