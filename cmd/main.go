@@ -155,14 +155,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.SchedulerReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Scheduler")
-		os.Exit(1)
-	}
-
 	ctx := ctrl.SetupSignalHandler()
 
 	policyStore := trust.NewStore(mgr.GetAPIReader(), trustPolicyNamespace, trustPolicyConfigMap, trustPolicyKey)
@@ -179,6 +171,16 @@ func main() {
 		}
 		setupLog.Info("image signature verification is disabled", "reason", err.Error())
 		verifier = nil
+	}
+
+	if err = (&controller.SchedulerReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Policy:   policyStore,
+		Verifier: verifier,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Scheduler")
+		os.Exit(1)
 	}
 
 	if err := (&webhookv1.SchedulerValidator{

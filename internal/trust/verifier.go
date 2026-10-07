@@ -33,7 +33,9 @@ import (
 const trustedRootTTL = 24 * time.Hour
 
 type Verifier interface {
-	Verify(ctx context.Context, imageRef string) error
+	// Verify checks the signature on imageRef and returns the digest-pinned
+	// reference (repo@sha256:...) of the verified content.
+	Verify(ctx context.Context, imageRef string) (string, error)
 }
 
 type CosignVerifier struct {
@@ -62,27 +64,31 @@ func NewCosignVerifier(policy CosignPolicy) (*CosignVerifier, error) {
 	}, nil
 }
 
-func (v *CosignVerifier) Verify(ctx context.Context, imageRef string) error {
+func (v *CosignVerifier) Verify(ctx context.Context, imageRef string) (string, error) {
 	ref, err := name.ParseReference(imageRef, name.WeakValidation)
 	if err != nil {
-		return fmt.Errorf("parse image reference %q: %w", imageRef, err)
+		return "", fmt.Errorf("parse image reference %q: %w", imageRef, err)
+	}
+
+	remoteOpts := make([]remote.Option, 0, len(v.remoteOpt)+1)
+	remoteOpts = append(remoteOpts, remote.WithContext(ctx))
+	remoteOpts = append(remoteOpts, v.remoteOpt...)
+	ociOpts := []ociremote.Option{ociremote.WithRemoteOptions(remoteOpts...)}
+
+	pinned, err := ociremote.ResolveDigest(ref, ociOpts...)
+	if err != nil {
+		return "", fmt.Errorf("resolve image %q: %w", imageRef, err)
 	}
 
 	trustedRoot, err := v.trustedMaterial()
 	if err != nil {
-		return fmt.Errorf("load Sigstore trusted root: %w", err)
+		return "", fmt.Errorf("load Sigstore trusted root: %w", err)
 	}
-
-	registryOpts := make([]remote.Option, 0, len(v.remoteOpt)+1)
-	registryOpts = append(registryOpts, remote.WithContext(ctx))
-	registryOpts = append(registryOpts, v.remoteOpt...)
 
 	// cosign v3 publishes signature bundles as DSSE envelopes behind OCI referrers.
 	opts := &cosign.CheckOpts{
-		RegistryClientOpts: []ociremote.Option{
-			ociremote.WithRemoteOptions(registryOpts...),
-		},
-		TrustedMaterial: trustedRoot,
+		RegistryClientOpts: ociOpts,
+		TrustedMaterial:    trustedRoot,
 		Identities: []cosign.Identity{{
 			Issuer:        v.cosign.Issuer,
 			Subject:       v.cosign.Identity,
@@ -91,10 +97,10 @@ func (v *CosignVerifier) Verify(ctx context.Context, imageRef string) error {
 		NewBundleFormat: true,
 	}
 
-	if _, _, err := cosign.VerifyImageAttestations(ctx, ref, opts); err != nil {
-		return fmt.Errorf("no trusted signature for %s: %w", ref.Name(), err)
+	if _, _, err := cosign.VerifyImageAttestations(ctx, pinned, opts); err != nil {
+		return "", fmt.Errorf("no trusted signature for %s: %w", pinned.Name(), err)
 	}
-	return nil
+	return pinned.Name(), nil
 }
 
 func (v *CosignVerifier) trustedMaterial() (root.TrustedMaterial, error) {

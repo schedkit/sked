@@ -33,9 +33,12 @@ func TestCosignVerifierIntegration(t *testing.T) {
 
 	v, err := NewCosignVerifier(CosignPolicy{Issuer: DefaultSigstoreIssuer, Identity: DefaultSigstoreIdentity})
 	require.NoError(t, err)
-	require.NoError(t, v.Verify(ctx, image))
+	pinned, err := v.Verify(ctx, image)
+	require.NoError(t, err)
+	require.Contains(t, pinned, "ghcr.io/schedkit/scx_rusty@sha256:")
 
 	untrusted, err := NewCosignVerifier(CosignPolicy{Issuer: DefaultSigstoreIssuer, Identity: "https://example.com/not-the-signer"})
 	require.NoError(t, err)
-	require.Error(t, untrusted.Verify(ctx, image))
+	_, err = untrusted.Verify(ctx, image)
+	require.Error(t, err)
 }

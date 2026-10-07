@@ -47,6 +47,13 @@ spec:
             type: object
           status:
             description: SchedulerStatus defines the observed state of Scheduler.
+            properties:
+              resolvedImage:
+                description: |-
+                  ResolvedImage is the digest-pinned reference of the verified scheduler image
+                  that the controller scheduled. It lets operators audit the exact content
+                  that is running.
+                type: string
             type: object
         type: object
     served: true

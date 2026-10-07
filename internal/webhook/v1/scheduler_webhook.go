@@ -29,14 +29,10 @@ import (
 	"github.com/schedkit/sked/internal/trust"
 )
 
-type PolicyProvider interface {
-	Get() *trust.Policy
-}
-
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 
 type SchedulerValidator struct {
-	Policy   PolicyProvider
+	Policy   trust.PolicyProvider
 	Verifier trust.Verifier
 }
 
@@ -85,7 +81,7 @@ func (v *SchedulerValidator) validate(ctx context.Context, scx *skedv1.Scheduler
 		if v.Verifier == nil {
 			return fmt.Errorf("signature verification is enabled but no verifier is configured")
 		}
-		if err := v.Verifier.Verify(ctx, image); err != nil {
+		if _, err := v.Verifier.Verify(ctx, image); err != nil {
 			return fmt.Errorf("image %q failed signature verification: %w", image, err)
 		}
 	}

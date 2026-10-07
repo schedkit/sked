@@ -27,6 +27,11 @@ import (
 
 const DefaultRefreshInterval = 30 * time.Second
 
+// PolicyProvider supplies the currently active trust policy.
+type PolicyProvider interface {
+	Get() *Policy
+}
+
 type Store struct {
 	reader    client.Reader
 	namespace string
@@ -39,7 +44,7 @@ type Store struct {
 }
 
 var _ interface {
-	Get() *Policy
+	PolicyProvider
 	Start(context.Context) error
 } = (*Store)(nil)
 
