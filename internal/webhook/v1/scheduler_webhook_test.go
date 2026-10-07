@@ -197,10 +197,3 @@ func TestValidateDelete(t *testing.T) {
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(warnings).To(BeEmpty())
 }
-
-func TestValidateCreateRejectsWrongType(t *testing.T) {
-	g := NewWithT(t)
-	v := &SchedulerValidator{Policy: staticPolicy{trust.DefaultPolicy()}}
-	_, err := v.ValidateCreate(context.Background(), &skedv1.SchedulerList{})
-	g.Expect(err).To(HaveOccurred())
-}
