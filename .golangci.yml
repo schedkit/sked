@@ -6,7 +6,6 @@ linters:
   enable:
     - dupl
     - errcheck
-    - ginkgolinter
     - goconst
     - gocyclo
     - govet

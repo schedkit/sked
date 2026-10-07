@@ -21,22 +21,21 @@ import (
 	"os"
 	"testing"
 
-	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCosignVerifierIntegration(t *testing.T) {
 	if os.Getenv("SKED_SIGSTORE_INTEGRATION") != "1" {
 		t.Skip("set SKED_SIGSTORE_INTEGRATION=1 to run against the live schedkit images")
 	}
-	g := NewWithT(t)
 	ctx := context.Background()
 	image := "ghcr.io/schedkit/scx_rusty:latest"
 
 	v, err := NewCosignVerifier(CosignPolicy{Issuer: DefaultSigstoreIssuer, Identity: DefaultSigstoreIdentity})
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(v.Verify(ctx, image)).To(Succeed())
+	require.NoError(t, err)
+	require.NoError(t, v.Verify(ctx, image))
 
 	untrusted, err := NewCosignVerifier(CosignPolicy{Issuer: DefaultSigstoreIssuer, Identity: "https://example.com/not-the-signer"})
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(untrusted.Verify(ctx, image)).NotTo(Succeed())
+	require.NoError(t, err)
+	require.Error(t, untrusted.Verify(ctx, image))
 }

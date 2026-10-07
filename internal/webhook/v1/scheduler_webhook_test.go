@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"testing"
 
-	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/require"
 	admissionv1 "k8s.io/api/admission/v1"
 	authenticationv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -67,52 +67,44 @@ func TestValidateCreate(t *testing.T) {
 	trustedImage := "ghcr.io/schedkit/scx_rusty:latest"
 
 	t.Run("allows a trusted and signed image", func(t *testing.T) {
-		g := NewWithT(t)
 		verifier := &fakeVerifier{}
 		v := &SchedulerValidator{Policy: staticPolicy{trust.DefaultPolicy()}, Verifier: verifier}
 		ctx := admission.NewContextWithRequest(context.Background(), requestWithIdentity("default", "alice"))
 
 		warnings, err := v.ValidateCreate(ctx, scheduler("default", trustedImage))
-		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(warnings).To(BeEmpty())
-		g.Expect(verifier.calls).To(Equal([]string{trustedImage}))
+		require.NoError(t, err)
+		require.Empty(t, warnings)
+		require.Equal(t, []string{trustedImage}, verifier.calls)
 	})
 
 	t.Run("rejects an image outside the allowlist", func(t *testing.T) {
-		g := NewWithT(t)
 		verifier := &fakeVerifier{}
 		v := &SchedulerValidator{Policy: staticPolicy{trust.DefaultPolicy()}, Verifier: verifier}
 		ctx := admission.NewContextWithRequest(context.Background(), requestWithIdentity("default", "alice"))
 
 		_, err := v.ValidateCreate(ctx, scheduler("default", "docker.io/library/nginx:latest"))
-		g.Expect(err).To(HaveOccurred())
-		g.Expect(err.Error()).To(ContainSubstring("allowlist"))
-		g.Expect(verifier.calls).To(BeEmpty())
+		require.ErrorContains(t, err, "allowlist")
+		require.Empty(t, verifier.calls)
 	})
 
 	t.Run("rejects an empty image reference", func(t *testing.T) {
-		g := NewWithT(t)
 		v := &SchedulerValidator{Policy: staticPolicy{trust.DefaultPolicy()}}
 		ctx := admission.NewContextWithRequest(context.Background(), requestWithIdentity("default", "alice"))
 
 		_, err := v.ValidateCreate(ctx, scheduler("default", "  "))
-		g.Expect(err).To(HaveOccurred())
-		g.Expect(err.Error()).To(ContainSubstring("must not be empty"))
+		require.ErrorContains(t, err, "must not be empty")
 	})
 
 	t.Run("rejects an image that fails signature verification", func(t *testing.T) {
-		g := NewWithT(t)
 		verifier := &fakeVerifier{err: fmt.Errorf("no signatures found")}
 		v := &SchedulerValidator{Policy: staticPolicy{trust.DefaultPolicy()}, Verifier: verifier}
 		ctx := admission.NewContextWithRequest(context.Background(), requestWithIdentity("default", "alice"))
 
 		_, err := v.ValidateCreate(ctx, scheduler("default", trustedImage))
-		g.Expect(err).To(HaveOccurred())
-		g.Expect(err.Error()).To(ContainSubstring("signature verification"))
+		require.ErrorContains(t, err, "signature verification")
 	})
 
 	t.Run("allows any image when verification is disabled and allowlist empty", func(t *testing.T) {
-		g := NewWithT(t)
 		policy := trust.DefaultPolicy()
 		policy.VerifySignatures = ptr.To(false)
 		policy.AllowedImages = []string{}
@@ -120,80 +112,71 @@ func TestValidateCreate(t *testing.T) {
 		ctx := admission.NewContextWithRequest(context.Background(), requestWithIdentity("default", "alice"))
 
 		_, err := v.ValidateCreate(ctx, scheduler("default", "docker.io/library/nginx:latest"))
-		g.Expect(err).NotTo(HaveOccurred())
+		require.NoError(t, err)
 	})
 
 	t.Run("allows a scheduler in an allowed namespace", func(t *testing.T) {
-		g := NewWithT(t)
 		policy := trust.DefaultPolicy()
 		policy.AllowedNamespaces = []string{"schedulers"}
 		v := &SchedulerValidator{Policy: staticPolicy{policy}, Verifier: &fakeVerifier{}}
 		ctx := admission.NewContextWithRequest(context.Background(), requestWithIdentity("schedulers", "alice"))
 
 		_, err := v.ValidateCreate(ctx, scheduler("schedulers", trustedImage))
-		g.Expect(err).NotTo(HaveOccurred())
+		require.NoError(t, err)
 	})
 
 	t.Run("rejects a disallowed namespace", func(t *testing.T) {
-		g := NewWithT(t)
 		policy := trust.DefaultPolicy()
 		policy.AllowedNamespaces = []string{"schedulers"}
 		v := &SchedulerValidator{Policy: staticPolicy{policy}, Verifier: &fakeVerifier{}}
 		ctx := admission.NewContextWithRequest(context.Background(), requestWithIdentity("default", "alice"))
 
 		_, err := v.ValidateCreate(ctx, scheduler("default", trustedImage))
-		g.Expect(err).To(HaveOccurred())
-		g.Expect(err.Error()).To(ContainSubstring("namespace"))
+		require.ErrorContains(t, err, "namespace")
 	})
 
 	t.Run("rejects a disallowed identity", func(t *testing.T) {
-		g := NewWithT(t)
 		policy := trust.DefaultPolicy()
 		policy.AllowedIdentities = trust.Identities{Users: []string{"alice"}}
 		v := &SchedulerValidator{Policy: staticPolicy{policy}, Verifier: &fakeVerifier{}}
 		ctx := admission.NewContextWithRequest(context.Background(), requestWithIdentity("default", "bob"))
 
 		_, err := v.ValidateCreate(ctx, scheduler("default", trustedImage))
-		g.Expect(err).To(HaveOccurred())
-		g.Expect(err.Error()).To(ContainSubstring("identity"))
+		require.ErrorContains(t, err, "identity")
 	})
 
 	t.Run("allows a disallowed identity check when configured for alice", func(t *testing.T) {
-		g := NewWithT(t)
 		policy := trust.DefaultPolicy()
 		policy.AllowedIdentities = trust.Identities{Users: []string{"alice"}}
 		v := &SchedulerValidator{Policy: staticPolicy{policy}, Verifier: &fakeVerifier{}}
 		ctx := admission.NewContextWithRequest(context.Background(), requestWithIdentity("default", "alice"))
 
 		_, err := v.ValidateCreate(ctx, scheduler("default", trustedImage))
-		g.Expect(err).NotTo(HaveOccurred())
+		require.NoError(t, err)
 	})
 
 	t.Run("allows an identity granted through a group", func(t *testing.T) {
-		g := NewWithT(t)
 		policy := trust.DefaultPolicy()
 		policy.AllowedIdentities = trust.Identities{Groups: []string{"schedulers"}}
 		v := &SchedulerValidator{Policy: staticPolicy{policy}, Verifier: &fakeVerifier{}}
 		ctx := admission.NewContextWithRequest(context.Background(), requestWithIdentity("default", "bob", "schedulers"))
 
 		_, err := v.ValidateCreate(ctx, scheduler("default", trustedImage))
-		g.Expect(err).NotTo(HaveOccurred())
+		require.NoError(t, err)
 	})
 }
 
 func TestValidateUpdate(t *testing.T) {
-	g := NewWithT(t)
 	v := &SchedulerValidator{Policy: staticPolicy{trust.DefaultPolicy()}, Verifier: &fakeVerifier{}}
 	ctx := admission.NewContextWithRequest(context.Background(), requestWithIdentity("default", "alice"))
 
 	_, err := v.ValidateUpdate(ctx, scheduler("default", "ghcr.io/schedkit/scx_rusty:latest"), scheduler("default", "docker.io/library/nginx:latest"))
-	g.Expect(err).To(HaveOccurred())
+	require.Error(t, err)
 }
 
 func TestValidateDelete(t *testing.T) {
-	g := NewWithT(t)
 	v := &SchedulerValidator{Policy: staticPolicy{trust.DefaultPolicy()}}
 	warnings, err := v.ValidateDelete(context.Background(), scheduler("default", "docker.io/library/nginx:latest"))
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(warnings).To(BeEmpty())
+	require.NoError(t, err)
+	require.Empty(t, warnings)
 }

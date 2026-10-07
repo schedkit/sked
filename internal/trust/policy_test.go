@@ -19,113 +19,99 @@ package trust
 import (
 	"testing"
 
-	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/require"
 	authenticationv1 "k8s.io/api/authentication/v1"
 )
 
 const testDigest = "sha256:a99edef75a7c06570d00bb625c358e17ac2c610d3fa2e838a1e7264e05078e11"
 
 func TestDefaultPolicy(t *testing.T) {
-	g := NewWithT(t)
 	p := DefaultPolicy()
 
-	g.Expect(p.SignatureVerificationEnabled()).To(BeTrue())
-	g.Expect(p.AllowsImage("ghcr.io/schedkit/scx_rusty:latest")).To(BeTrue())
-	g.Expect(p.AllowsImage("ghcr.io/schedkit/scx_rusty@" + testDigest)).To(BeTrue())
-	g.Expect(p.AllowsImage("docker.io/library/nginx:latest")).To(BeFalse())
-	g.Expect(p.AllowsNamespace("anything")).To(BeTrue())
-	g.Expect(p.AllowsIdentity(authenticationv1.UserInfo{Username: "alice"})).To(BeTrue())
+	require.True(t, p.SignatureVerificationEnabled())
+	require.True(t, p.AllowsImage("ghcr.io/schedkit/scx_rusty:latest"))
+	require.True(t, p.AllowsImage("ghcr.io/schedkit/scx_rusty@"+testDigest))
+	require.False(t, p.AllowsImage("docker.io/library/nginx:latest"))
+	require.True(t, p.AllowsNamespace("anything"))
+	require.True(t, p.AllowsIdentity(authenticationv1.UserInfo{Username: "alice"}))
 }
 
 func TestAllowsImage(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Expect((&Policy{}).AllowsImage("docker.io/library/nginx:latest")).To(BeTrue())
+	require.True(t, (&Policy{}).AllowsImage("docker.io/library/nginx:latest"))
 
 	p := &Policy{AllowedImages: []string{"ghcr.io/schedkit/*"}}
-	g.Expect(p.AllowsImage("ghcr.io/schedkit/scx_rusty:latest")).To(BeTrue())
-	g.Expect(p.AllowsImage("ghcr.io/other/scx_rusty:latest")).To(BeFalse())
-	g.Expect(p.AllowsImage("ghcr.io/schedkit/nested/scx_rusty:latest")).To(BeFalse())
-	g.Expect(p.AllowsImage("not a reference")).To(BeFalse())
+	require.True(t, p.AllowsImage("ghcr.io/schedkit/scx_rusty:latest"))
+	require.False(t, p.AllowsImage("ghcr.io/other/scx_rusty:latest"))
+	require.False(t, p.AllowsImage("ghcr.io/schedkit/nested/scx_rusty:latest"))
+	require.False(t, p.AllowsImage("not a reference"))
 }
 
 func TestAllowsNamespace(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Expect((&Policy{}).AllowsNamespace("default")).To(BeTrue())
+	require.True(t, (&Policy{}).AllowsNamespace("default"))
 
 	p := &Policy{AllowedNamespaces: []string{"sked-system", "schedulers"}}
-	g.Expect(p.AllowsNamespace("schedulers")).To(BeTrue())
-	g.Expect(p.AllowsNamespace("default")).To(BeFalse())
+	require.True(t, p.AllowsNamespace("schedulers"))
+	require.False(t, p.AllowsNamespace("default"))
 }
 
 func TestAllowsIdentity(t *testing.T) {
-	g := NewWithT(t)
-
-	g.Expect((&Policy{}).AllowsIdentity(authenticationv1.UserInfo{Username: "system:anonymous"})).To(BeTrue())
+	require.True(t, (&Policy{}).AllowsIdentity(authenticationv1.UserInfo{Username: "system:anonymous"}))
 
 	p := &Policy{AllowedIdentities: Identities{
 		Users:           []string{"alice"},
 		Groups:          []string{"schedulers"},
 		ServiceAccounts: []string{"sked-system:controller-manager"},
 	}}
-	g.Expect(p.AllowsIdentity(authenticationv1.UserInfo{Username: "alice"})).To(BeTrue())
-	g.Expect(p.AllowsIdentity(authenticationv1.UserInfo{Groups: []string{"schedulers"}})).To(BeTrue())
-	g.Expect(p.AllowsIdentity(authenticationv1.UserInfo{Username: "system:serviceaccount:sked-system:controller-manager"})).To(BeTrue())
-	g.Expect(p.AllowsIdentity(authenticationv1.UserInfo{Username: "system:serviceaccount:default:other"})).To(BeFalse())
-	g.Expect(p.AllowsIdentity(authenticationv1.UserInfo{Username: "bob"})).To(BeFalse())
+	require.True(t, p.AllowsIdentity(authenticationv1.UserInfo{Username: "alice"}))
+	require.True(t, p.AllowsIdentity(authenticationv1.UserInfo{Groups: []string{"schedulers"}}))
+	require.True(t, p.AllowsIdentity(authenticationv1.UserInfo{Username: "system:serviceaccount:sked-system:controller-manager"}))
+	require.False(t, p.AllowsIdentity(authenticationv1.UserInfo{Username: "system:serviceaccount:default:other"}))
+	require.False(t, p.AllowsIdentity(authenticationv1.UserInfo{Username: "bob"}))
 }
 
 func TestParsePolicy(t *testing.T) {
 	t.Run("empty document yields defaults", func(t *testing.T) {
-		g := NewWithT(t)
 		p, err := ParsePolicy(nil)
-		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(p.AllowedImages).To(Equal(defaultAllowedImages))
-		g.Expect(p.SignatureVerificationEnabled()).To(BeTrue())
-		g.Expect(p.Cosign.Identity).To(Equal(DefaultSigstoreIdentity))
+		require.NoError(t, err)
+		require.Equal(t, defaultAllowedImages, p.AllowedImages)
+		require.True(t, p.SignatureVerificationEnabled())
+		require.Equal(t, DefaultSigstoreIdentity, p.Cosign.Identity)
 	})
 
 	t.Run("omitted fields inherit defaults", func(t *testing.T) {
-		g := NewWithT(t)
 		p, err := ParsePolicy([]byte("allowedNamespaces:\n- schedulers\n"))
-		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(p.AllowedImages).To(Equal(defaultAllowedImages))
-		g.Expect(p.SignatureVerificationEnabled()).To(BeTrue())
-		g.Expect(p.AllowedNamespaces).To(Equal([]string{"schedulers"}))
+		require.NoError(t, err)
+		require.Equal(t, defaultAllowedImages, p.AllowedImages)
+		require.True(t, p.SignatureVerificationEnabled())
+		require.Equal(t, []string{"schedulers"}, p.AllowedNamespaces)
 	})
 
 	t.Run("verification can be disabled explicitly", func(t *testing.T) {
-		g := NewWithT(t)
 		p, err := ParsePolicy([]byte("verifySignatures: false\nallowedImages: []\n"))
-		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(p.SignatureVerificationEnabled()).To(BeFalse())
-		g.Expect(p.AllowsImage("docker.io/library/nginx:latest")).To(BeTrue())
+		require.NoError(t, err)
+		require.False(t, p.SignatureVerificationEnabled())
+		require.True(t, p.AllowsImage("docker.io/library/nginx:latest"))
 	})
 
 	t.Run("unknown fields are rejected", func(t *testing.T) {
-		g := NewWithT(t)
 		_, err := ParsePolicy([]byte("notAField: true\n"))
-		g.Expect(err).To(HaveOccurred())
+		require.Error(t, err)
 	})
 
 	t.Run("invalid identity regexp is rejected", func(t *testing.T) {
-		g := NewWithT(t)
 		_, err := ParsePolicy([]byte("cosign:\n  identityRegexp: \"[\"\n"))
-		g.Expect(err).To(HaveOccurred())
+		require.Error(t, err)
 	})
 }
 
 func TestNewCosignVerifier(t *testing.T) {
-	g := NewWithT(t)
-
 	_, err := NewCosignVerifier(CosignPolicy{Identity: "x"})
-	g.Expect(err).To(HaveOccurred())
+	require.Error(t, err)
 
 	_, err = NewCosignVerifier(CosignPolicy{Issuer: "x"})
-	g.Expect(err).To(HaveOccurred())
+	require.Error(t, err)
 
 	v, err := NewCosignVerifier(CosignPolicy{Issuer: "x", Identity: "y"})
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(v).NotTo(BeNil())
+	require.NoError(t, err)
+	require.NotNil(t, v)
 }
