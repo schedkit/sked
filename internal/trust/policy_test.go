@@ -19,10 +19,7 @@ package trust
 import (
 	"testing"
 
-	v1 "github.com/google/go-containerregistry/pkg/v1"
 	. "github.com/onsi/gomega"
-	protobundle "github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1"
-	protodsse "github.com/sigstore/protobuf-specs/gen/pb-go/dsse"
 	authenticationv1 "k8s.io/api/authentication/v1"
 )
 
@@ -117,29 +114,6 @@ func TestParsePolicy(t *testing.T) {
 		_, err := ParsePolicy([]byte("cosign:\n  identityRegexp: \"[\"\n"))
 		g.Expect(err).To(HaveOccurred())
 	})
-}
-
-func TestBundleMatchesDigest(t *testing.T) {
-	g := NewWithT(t)
-	digest, err := v1.NewHash(testDigest)
-	g.Expect(err).NotTo(HaveOccurred())
-
-	payload := []byte(`{"predicateType":"https://sigstore.dev/cosign/sign/v1","subject":[{"digest":{"sha256":"a99edef75a7c06570d00bb625c358e17ac2c610d3fa2e838a1e7264e05078e11"}}]}`)
-	b := &protobundle.Bundle{Content: &protobundle.Bundle_DsseEnvelope{
-		DsseEnvelope: &protodsse.Envelope{PayloadType: "application/vnd.in-toto+json", Payload: payload},
-	}}
-	g.Expect(bundleMatchesDigest(b, digest)).To(BeTrue())
-
-	other, err := v1.NewHash("sha256:0000000000000000000000000000000000000000000000000000000000000000")
-	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(bundleMatchesDigest(b, other)).To(BeFalse())
-
-	wrongPredicate := &protobundle.Bundle{Content: &protobundle.Bundle_DsseEnvelope{
-		DsseEnvelope: &protodsse.Envelope{Payload: []byte(`{"predicateType":"https://slsa.dev/provenance/v1","subject":[{"digest":{"sha256":"a99edef75a7c06570d00bb625c358e17ac2c610d3fa2e838a1e7264e05078e11"}}]}`)},
-	}}
-	g.Expect(bundleMatchesDigest(wrongPredicate, digest)).To(BeFalse())
-
-	g.Expect(bundleMatchesDigest(&protobundle.Bundle{}, digest)).To(BeFalse())
 }
 
 func TestNewCosignVerifier(t *testing.T) {

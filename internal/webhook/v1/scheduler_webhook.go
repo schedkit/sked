@@ -22,7 +22,6 @@ import (
 	"strings"
 
 	authenticationv1 "k8s.io/api/authentication/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
@@ -41,25 +40,17 @@ type SchedulerValidator struct {
 	Verifier trust.Verifier
 }
 
-var _ admission.CustomValidator = (*SchedulerValidator)(nil)
+var _ admission.Validator[*skedv1.Scheduler] = (*SchedulerValidator)(nil)
 
-func (v *SchedulerValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
-	scx, ok := obj.(*skedv1.Scheduler)
-	if !ok {
-		return nil, fmt.Errorf("expected a Scheduler object but got %T", obj)
-	}
+func (v *SchedulerValidator) ValidateCreate(ctx context.Context, scx *skedv1.Scheduler) (admission.Warnings, error) {
 	return nil, v.validate(ctx, scx)
 }
 
-func (v *SchedulerValidator) ValidateUpdate(ctx context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
-	scx, ok := newObj.(*skedv1.Scheduler)
-	if !ok {
-		return nil, fmt.Errorf("expected a Scheduler object but got %T", newObj)
-	}
-	return nil, v.validate(ctx, scx)
+func (v *SchedulerValidator) ValidateUpdate(ctx context.Context, _, newSCX *skedv1.Scheduler) (admission.Warnings, error) {
+	return nil, v.validate(ctx, newSCX)
 }
 
-func (v *SchedulerValidator) ValidateDelete(context.Context, runtime.Object) (admission.Warnings, error) {
+func (v *SchedulerValidator) ValidateDelete(context.Context, *skedv1.Scheduler) (admission.Warnings, error) {
 	return nil, nil
 }
 
@@ -102,8 +93,7 @@ func (v *SchedulerValidator) validate(ctx context.Context, scx *skedv1.Scheduler
 }
 
 func (v *SchedulerValidator) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr).
-		For(&skedv1.Scheduler{}).
+	return ctrl.NewWebhookManagedBy(mgr, &skedv1.Scheduler{}).
 		WithValidator(v).
 		Complete()
 }
