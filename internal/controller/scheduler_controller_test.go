@@ -52,7 +52,7 @@ var _ = Describe("Scheduler Controller", func() {
 						Namespace: "default",
 					},
 					Spec: skedv1.SchedulerSpec{
-						Sched: "ghcr.io/schedkit/scheds/scx_rusty:latest",
+						Sched: "ghcr.io/schedkit/scx_rusty:latest",
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())

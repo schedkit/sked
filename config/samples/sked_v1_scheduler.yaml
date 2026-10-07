@@ -6,4 +6,4 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: scheduler-sample
 spec:
-  sched: "ghcr.io/schedkit/scheds/scx_rusty:latest"
+  sched: "ghcr.io/schedkit/scx_rusty:latest"
