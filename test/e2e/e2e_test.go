@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,6 +43,15 @@ const metricsServiceName = "sked-controller-manager-metrics-service"
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
 const metricsRoleBindingName = "sked-metrics-binding"
+
+// schedulerName is the name of the Scheduler created by the reconciliation e2e scenario.
+const schedulerName = "e2e-scheduler"
+
+// testSchedulerImage is a signed, allowlisted no-op scheduler image that keeps a pod Running.
+const testSchedulerImage = "ghcr.io/schedkit/scx_test:v1.1.2"
+
+// updatedSchedulerImage is a second signed, allowlisted no-op image used to exercise updates.
+const updatedSchedulerImage = "ghcr.io/schedkit/scx_test:v1.1.3"
 
 const (
 	eventuallyTimeout = 2 * time.Minute
@@ -152,6 +162,129 @@ func TestE2E(t *testing.T) {
 		metricsOutput := getMetricsOutput(t)
 		require.Contains(t, metricsOutput, "controller_runtime_reconcile_total")
 	})
+
+	t.Run("should reconcile a Scheduler into a DaemonSet and clean it up", func(t *testing.T) {
+		t.Cleanup(func() {
+			deleteScheduler(t, schedulerName)
+			waitForDaemonSetDeleted(t, schedulerName)
+		})
+
+		applyScheduler(t, schedulerName, testSchedulerImage)
+		waitForDaemonSetImage(t, schedulerName, testSchedulerImage)
+		waitForDaemonSetRollout(t, schedulerName)
+		assertDaemonSetOwnedByScheduler(t, schedulerName)
+
+		applyScheduler(t, schedulerName, updatedSchedulerImage)
+		waitForDaemonSetImage(t, schedulerName, updatedSchedulerImage)
+		waitForDaemonSetRollout(t, schedulerName)
+
+		deleteScheduler(t, schedulerName)
+		waitForDaemonSetDeleted(t, schedulerName)
+	})
+}
+
+func applyScheduler(t *testing.T, name, image string) {
+	t.Helper()
+
+	manifest := fmt.Sprintf(`apiVersion: sked.schedkit.io/v1
+kind: Scheduler
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  sched: %s
+`, name, namespace, image)
+
+	cmd := exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(manifest)
+	_, err := utils.Run(cmd)
+	require.NoError(t, err, "Failed to apply Scheduler %s", name)
+}
+
+func deleteScheduler(t *testing.T, name string) {
+	t.Helper()
+
+	cmd := exec.Command("kubectl", "delete", "scheduler", name, "-n", namespace, "--ignore-not-found")
+	_, err := utils.Run(cmd)
+	require.NoError(t, err, "Failed to delete Scheduler %s", name)
+}
+
+func waitForDaemonSetImage(t *testing.T, name, image string) {
+	t.Helper()
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		cmd := exec.Command("kubectl", "get", "daemonset", name, "-n", namespace,
+			"-o", "jsonpath={.spec.template.spec.containers[0].image}")
+		output, err := utils.Run(cmd)
+		if !assert.NoError(c, err) {
+			return
+		}
+		assert.Equal(c, image, output, "DaemonSet %s has the wrong scheduler image", name)
+	}, eventuallyTimeout, eventuallyTick)
+}
+
+func waitForDaemonSetRollout(t *testing.T, name string) {
+	t.Helper()
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		cmd := exec.Command("kubectl", "rollout", "status", "daemonset/"+name,
+			"-n", namespace, "--timeout=10s")
+		_, err := utils.Run(cmd)
+		assert.NoError(c, err, "DaemonSet %s did not roll out", name)
+	}, 3*time.Minute, 10*time.Second)
+}
+
+func waitForDaemonSetDeleted(t *testing.T, name string) {
+	t.Helper()
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		cmd := exec.Command("kubectl", "get", "daemonset", name, "-n", namespace)
+		_, err := utils.Run(cmd)
+		assert.Error(c, err, "DaemonSet %s still exists", name)
+	}, eventuallyTimeout, eventuallyTick)
+}
+
+func assertDaemonSetOwnedByScheduler(t *testing.T, name string) {
+	t.Helper()
+
+	cmd := exec.Command("kubectl", "get", "daemonset", name, "-n", namespace, "-o", "json")
+	output, err := utils.Run(cmd)
+	require.NoError(t, err, "Failed to get DaemonSet %s", name)
+
+	var ds struct {
+		Metadata struct {
+			Labels          map[string]string `json:"labels"`
+			OwnerReferences []struct {
+				Kind       string `json:"kind"`
+				Name       string `json:"name"`
+				Controller bool   `json:"controller"`
+			} `json:"ownerReferences"`
+		} `json:"metadata"`
+		Spec struct {
+			Selector struct {
+				MatchLabels map[string]string `json:"matchLabels"`
+			} `json:"selector"`
+			Template struct {
+				Spec struct {
+					Containers []struct {
+						SecurityContext struct {
+							Privileged bool `json:"privileged"`
+						} `json:"securityContext"`
+					} `json:"containers"`
+				} `json:"spec"`
+			} `json:"template"`
+		} `json:"spec"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(output), &ds))
+
+	require.Equal(t, "sked-controller", ds.Metadata.Labels["managed-by"])
+	require.Len(t, ds.Metadata.OwnerReferences, 1)
+	require.Equal(t, "Scheduler", ds.Metadata.OwnerReferences[0].Kind)
+	require.Equal(t, name, ds.Metadata.OwnerReferences[0].Name)
+	require.True(t, ds.Metadata.OwnerReferences[0].Controller)
+	require.Equal(t, name, ds.Spec.Selector.MatchLabels["name"])
+	require.Len(t, ds.Spec.Template.Spec.Containers, 1)
+	require.True(t, ds.Spec.Template.Spec.Containers[0].SecurityContext.Privileged)
 }
 
 func dumpDiagnostics(t *testing.T, controllerPodName string) {
