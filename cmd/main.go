@@ -37,6 +37,8 @@ import (
 
 	skedv1 "github.com/schedkit/sked/api/v1"
 	"github.com/schedkit/sked/internal/controller"
+	"github.com/schedkit/sked/internal/trust"
+	webhookv1 "github.com/schedkit/sked/internal/webhook/v1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -58,6 +60,9 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var trustPolicyConfigMap string
+	var trustPolicyNamespace string
+	var trustPolicyKey string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -69,6 +74,12 @@ func main() {
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&trustPolicyConfigMap, "trust-policy-configmap", trust.DefaultConfigMapName,
+		"Name of the ConfigMap that carries the scheduler image trust policy.")
+	flag.StringVar(&trustPolicyNamespace, "trust-policy-namespace", os.Getenv("POD_NAMESPACE"),
+		"Namespace of the scheduler image trust policy ConfigMap. Defaults to the manager namespace.")
+	flag.StringVar(&trustPolicyKey, "trust-policy-configmap-key", trust.DefaultConfigMapKey,
+		"Key inside the trust policy ConfigMap that carries the policy document.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -151,6 +162,36 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "Scheduler")
 		os.Exit(1)
 	}
+
+	ctx := ctrl.SetupSignalHandler()
+
+	policyStore := trust.NewStore(mgr.GetAPIReader(), trustPolicyNamespace, trustPolicyConfigMap, trustPolicyKey)
+	if err := policyStore.Refresh(ctx); err != nil {
+		setupLog.Error(err, "unable to load trust policy ConfigMap, falling back to built-in defaults")
+	}
+
+	var verifier trust.Verifier
+	verifier, err = trust.NewCosignVerifier(policyStore.Get().Cosign)
+	if err != nil {
+		if policyStore.Get().SignatureVerificationEnabled() {
+			setupLog.Error(err, "unable to create image signature verifier")
+			os.Exit(1)
+		}
+		setupLog.Info("image signature verification is disabled", "reason", err.Error())
+		verifier = nil
+	}
+
+	if err := (&webhookv1.SchedulerValidator{
+		Policy:   policyStore,
+		Verifier: verifier,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "Scheduler")
+		os.Exit(1)
+	}
+	if err := mgr.Add(policyStore); err != nil {
+		setupLog.Error(err, "unable to register trust policy refresher")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -163,7 +204,7 @@ func main() {
 	}
 
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}

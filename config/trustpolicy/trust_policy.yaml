@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/name: sked
+    app.kubernetes.io/managed-by: kustomize
+  name: scheduler-trust-policy
+  namespace: system
+data:
+  policy.yaml: |
+    allowedImages:
+    - ghcr.io/schedkit/gthulhu
+    - ghcr.io/schedkit/scx_beerland
+    - ghcr.io/schedkit/scx_bpfland
+    - ghcr.io/schedkit/scx_cosmos
+    - ghcr.io/schedkit/scx_flash
+    - ghcr.io/schedkit/scx_flow
+    - ghcr.io/schedkit/scx_lavd
+    - ghcr.io/schedkit/scx_mitosis
+    - ghcr.io/schedkit/scx_p2dq
+    - ghcr.io/schedkit/scx_pandemonium
+    - ghcr.io/schedkit/scx_rustland
+    - ghcr.io/schedkit/scx_rusty
+    - ghcr.io/schedkit/scx_test
+    - ghcr.io/schedkit/scx_tickless
+    verifySignatures: true
+    cosign:
+      issuer: https://token.actions.githubusercontent.com
+      identity: https://github.com/schedkit/plumbing/.github/workflows/oci-build-publish.yml@refs/heads/main
