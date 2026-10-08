@@ -154,6 +154,7 @@ func (r *SchedulerReconciler) resolveImage(ctx context.Context, scx *skedv1.Sche
 func (r *SchedulerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&skedv1.Scheduler{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Owns(&appsv1.DaemonSet{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Named("scheduler").
 		Complete(r)
 }

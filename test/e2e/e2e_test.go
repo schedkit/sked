@@ -175,6 +175,13 @@ func TestE2E(t *testing.T) {
 		waitForDaemonSetRollout(t, schedulerName)
 		assertDaemonSetOwnedByScheduler(t, schedulerName)
 
+		// Out-of-band deletion and modification of the owned DaemonSet must be repaired.
+		deleteDaemonSet(t, schedulerName)
+		waitForDaemonSetImage(t, schedulerName, firstResolved)
+
+		patchDaemonSetImage(t, schedulerName, "ghcr.io/schedkit/scx_test:v1.1.1")
+		waitForDaemonSetImage(t, schedulerName, firstResolved)
+
 		applyScheduler(t, schedulerName, updatedSchedulerImage)
 		secondResolved := waitForSchedulerResolvedImageChange(t, schedulerName, firstResolved)
 		waitForDaemonSetImage(t, schedulerName, secondResolved)
@@ -223,6 +230,23 @@ func waitForDaemonSetImage(t *testing.T, name, image string) {
 		}
 		assert.Equal(c, image, output, "DaemonSet %s has the wrong scheduler image", name)
 	}, eventuallyTimeout, eventuallyTick)
+}
+
+func deleteDaemonSet(t *testing.T, name string) {
+	t.Helper()
+
+	cmd := exec.Command("kubectl", "delete", "daemonset", name, "-n", namespace, "--ignore-not-found")
+	_, err := utils.Run(cmd)
+	require.NoError(t, err, "Failed to delete DaemonSet %s", name)
+}
+
+func patchDaemonSetImage(t *testing.T, name, image string) {
+	t.Helper()
+
+	patch := fmt.Sprintf(`{"spec":{"template":{"spec":{"containers":[{"name":"scx","image":%q}]}}}}`, image)
+	cmd := exec.Command("kubectl", "patch", "daemonset", name, "-n", namespace, "--type=strategic", "-p", patch)
+	_, err := utils.Run(cmd)
+	require.NoError(t, err, "Failed to patch DaemonSet %s", name)
 }
 
 func waitForSchedulerResolvedImage(t *testing.T, name string) string {
