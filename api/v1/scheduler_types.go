@@ -29,16 +29,54 @@ type SchedulerSpec struct {
 	Sched string `json:"sched"`
 }
 
+const (
+	SchedulerConditionReady       = "Ready"
+	SchedulerConditionProgressing = "Progressing"
+	SchedulerConditionDegraded    = "Degraded"
+)
+
+const (
+	ReasonReconcileSucceeded      = "ReconcileSucceeded"
+	ReasonRolloutInProgress       = "RolloutInProgress"
+	ReasonDaemonSetReady          = "DaemonSetReady"
+	ReasonNoNodesScheduled        = "NoNodesScheduled"
+	ReasonNodesUnavailable        = "NodesUnavailable"
+	ReasonSpecInvalid             = "SpecInvalid"
+	ReasonImageVerificationFailed = "ImageVerificationFailed"
+	ReasonReconcileFailed         = "ReconcileFailed"
+)
+
+type SchedulerNodeStatus struct {
+	Desired     int32 `json:"desired"`
+	Ready       int32 `json:"ready"`
+	Available   int32 `json:"available"`
+	Unavailable int32 `json:"unavailable"`
+}
+
 // SchedulerStatus defines the observed state of Scheduler.
 type SchedulerStatus struct {
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+
 	// ResolvedImage is the digest-pinned reference of the verified scheduler image
 	// that the controller scheduled. It lets operators audit the exact content
 	// that is running.
 	ResolvedImage string `json:"resolvedImage,omitempty"`
+
+	Nodes SchedulerNodeStatus `json:"nodes"`
+
+	// +listType=map
+	// +listMapKey=type
+	// +patchStrategy=merge
+	// +patchMergeKey=type
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
+// +kubebuilder:printcolumn:name="Desired",type="integer",JSONPath=".status.nodes.desired"
+// +kubebuilder:printcolumn:name="Available",type="integer",JSONPath=".status.nodes.available"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // Scheduler is the Schema for the schedulers API.
 type Scheduler struct {
