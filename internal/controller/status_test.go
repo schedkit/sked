@@ -153,6 +153,37 @@ func TestMarkReconcileFailure(t *testing.T) {
 	require.Equal(t, metav1.ConditionTrue, conditionFor(t, scx, skedv1.SchedulerConditionDegraded).Status)
 }
 
+func TestMarkSchedulerActive(t *testing.T) {
+	scx := &skedv1.Scheduler{ObjectMeta: metav1.ObjectMeta{Generation: 2}}
+
+	markSchedulerActive(scx)
+
+	active := conditionFor(t, scx, skedv1.SchedulerConditionActive)
+	require.Equal(t, metav1.ConditionTrue, active.Status)
+	require.Equal(t, skedv1.ReasonActiveScheduler, active.Reason)
+	require.Equal(t, int64(2), active.ObservedGeneration)
+}
+
+func TestMarkSchedulerConflict(t *testing.T) {
+	scx := &skedv1.Scheduler{ObjectMeta: metav1.ObjectMeta{Generation: 4}}
+	scx.Status.ResolvedImage = "example.com/sched@sha256:abc"
+	scx.Status.Nodes = skedv1.SchedulerNodeStatus{Desired: 1, Ready: 1, Available: 1}
+	active := &skedv1.Scheduler{ObjectMeta: metav1.ObjectMeta{Name: "active", Namespace: "default"}}
+
+	markSchedulerConflict(scx, active)
+
+	activeCondition := conditionFor(t, scx, skedv1.SchedulerConditionActive)
+	require.Equal(t, metav1.ConditionFalse, activeCondition.Status)
+	require.Equal(t, skedv1.ReasonSchedulerConflict, activeCondition.Reason)
+	require.Contains(t, activeCondition.Message, "default/active")
+	require.Equal(t, int64(4), activeCondition.ObservedGeneration)
+	require.Equal(t, metav1.ConditionFalse, conditionFor(t, scx, skedv1.SchedulerConditionReady).Status)
+	require.Equal(t, metav1.ConditionFalse, conditionFor(t, scx, skedv1.SchedulerConditionProgressing).Status)
+	require.Equal(t, metav1.ConditionTrue, conditionFor(t, scx, skedv1.SchedulerConditionDegraded).Status)
+	require.Equal(t, skedv1.SchedulerNodeStatus{}, scx.Status.Nodes)
+	require.Empty(t, scx.Status.ResolvedImage)
+}
+
 func TestResolveFailureReason(t *testing.T) {
 	require.Equal(t, skedv1.ReasonSpecInvalid, resolveFailureReason(errEmptySched))
 	require.Equal(t, skedv1.ReasonReconcileFailed, resolveFailureReason(errMissingVerifier))

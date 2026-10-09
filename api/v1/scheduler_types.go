@@ -30,6 +30,7 @@ type SchedulerSpec struct {
 }
 
 const (
+	SchedulerConditionActive      = "Active"
 	SchedulerConditionReady       = "Ready"
 	SchedulerConditionProgressing = "Progressing"
 	SchedulerConditionDegraded    = "Degraded"
@@ -44,6 +45,8 @@ const (
 	ReasonSpecInvalid             = "SpecInvalid"
 	ReasonImageVerificationFailed = "ImageVerificationFailed"
 	ReasonReconcileFailed         = "ReconcileFailed"
+	ReasonActiveScheduler         = "ActiveScheduler"
+	ReasonSchedulerConflict       = "SchedulerConflict"
 )
 
 type SchedulerNodeStatus struct {
