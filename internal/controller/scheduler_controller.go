@@ -66,8 +66,13 @@ func (r *SchedulerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	var scx skedv1.Scheduler
 	if err := r.Get(ctx, req.NamespacedName, &scx); err != nil {
+		// A missing Scheduler is the normal outcome during deletion: it is not a
+		// failure, so do not log it at error level.
+		if apierrors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
 		logger.Error(err, "unable to fetch Scheduler")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		return ctrl.Result{}, err
 	}
 
 	base := scx.DeepCopy()
