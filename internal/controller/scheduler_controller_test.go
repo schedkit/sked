@@ -141,4 +141,103 @@ func TestSchedulerReconcilePinsImage(t *testing.T) {
 	var updated skedv1.Scheduler
 	require.NoError(t, k8sClient.Get(ctx, namespacedName, &updated))
 	require.Equal(t, pinned, updated.Status.ResolvedImage)
+	require.Equal(t, updated.Generation, updated.Status.ObservedGeneration)
+}
+
+func TestSchedulerReconcilePopulatesStatus(t *testing.T) {
+	ctx, k8sClient := newTestEnv(t)
+
+	const resourceName = "status-resource"
+	const image = "ghcr.io/schedkit/scx_rusty:latest"
+	const pinned = "ghcr.io/schedkit/scx_rusty@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+	namespacedName := types.NamespacedName{Name: resourceName, Namespace: "default"}
+
+	resource := &skedv1.Scheduler{
+		ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: "default"},
+		Spec:       skedv1.SchedulerSpec{Sched: image},
+	}
+	require.NoError(t, k8sClient.Create(ctx, resource))
+	t.Cleanup(func() { require.NoError(t, k8sClient.Delete(ctx, resource)) })
+
+	r := &SchedulerReconciler{
+		Client:   k8sClient,
+		Scheme:   k8sClient.Scheme(),
+		Policy:   fakePolicy{trust.DefaultPolicy()},
+		Verifier: &fakeVerifier{resolved: pinned},
+	}
+
+	_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
+	require.NoError(t, err)
+
+	var updated skedv1.Scheduler
+	require.NoError(t, k8sClient.Get(ctx, namespacedName, &updated))
+	require.Equal(t, updated.Generation, updated.Status.ObservedGeneration)
+	require.Equal(t, pinned, updated.Status.ResolvedImage)
+
+	require.Equal(t, skedv1.SchedulerNodeStatus{}, updated.Status.Nodes)
+	ready := conditionFor(t, &updated, skedv1.SchedulerConditionReady)
+	require.Equal(t, metav1.ConditionFalse, ready.Status)
+	require.Equal(t, skedv1.ReasonNoNodesScheduled, ready.Reason)
+
+	var ds appsv1.DaemonSet
+	require.NoError(t, k8sClient.Get(ctx, namespacedName, &ds))
+	ds.Status = appsv1.DaemonSetStatus{
+		CurrentNumberScheduled: 2,
+		DesiredNumberScheduled: 2,
+		UpdatedNumberScheduled: 2,
+		NumberReady:            2,
+		NumberAvailable:        2,
+		ObservedGeneration:     ds.Generation,
+	}
+	require.NoError(t, k8sClient.Status().Update(ctx, &ds))
+
+	_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
+	require.NoError(t, err)
+
+	require.NoError(t, k8sClient.Get(ctx, namespacedName, &updated))
+	require.Equal(t, skedv1.SchedulerNodeStatus{Desired: 2, Ready: 2, Available: 2}, updated.Status.Nodes)
+	ready = conditionFor(t, &updated, skedv1.SchedulerConditionReady)
+	require.Equal(t, metav1.ConditionTrue, ready.Status)
+	require.Equal(t, skedv1.ReasonDaemonSetReady, ready.Reason)
+	require.Equal(t, metav1.ConditionFalse, conditionFor(t, &updated, skedv1.SchedulerConditionDegraded).Status)
+}
+
+func TestSchedulerReconcileReportsVerificationFailure(t *testing.T) {
+	ctx, k8sClient := newTestEnv(t)
+
+	const resourceName = "unverified-resource"
+	const image = "ghcr.io/schedkit/scx_rusty:latest"
+
+	namespacedName := types.NamespacedName{Name: resourceName, Namespace: "default"}
+
+	resource := &skedv1.Scheduler{
+		ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: "default"},
+		Spec:       skedv1.SchedulerSpec{Sched: image},
+	}
+	require.NoError(t, k8sClient.Create(ctx, resource))
+	t.Cleanup(func() { require.NoError(t, k8sClient.Delete(ctx, resource)) })
+
+	r := &SchedulerReconciler{
+		Client:   k8sClient,
+		Scheme:   k8sClient.Scheme(),
+		Policy:   fakePolicy{trust.DefaultPolicy()},
+		Verifier: &fakeVerifier{err: errors.New("no trusted signature")},
+	}
+
+	_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
+	require.ErrorContains(t, err, "verify scheduler image")
+
+	var updated skedv1.Scheduler
+	require.NoError(t, k8sClient.Get(ctx, namespacedName, &updated))
+	require.Equal(t, updated.Generation, updated.Status.ObservedGeneration)
+
+	degraded := conditionFor(t, &updated, skedv1.SchedulerConditionDegraded)
+	require.Equal(t, metav1.ConditionTrue, degraded.Status)
+	require.Equal(t, skedv1.ReasonImageVerificationFailed, degraded.Reason)
+	require.Equal(t, metav1.ConditionFalse, conditionFor(t, &updated, skedv1.SchedulerConditionReady).Status)
+
+	var ds appsv1.DaemonSet
+	err = k8sClient.Get(ctx, namespacedName, &ds)
+	require.Error(t, err)
 }

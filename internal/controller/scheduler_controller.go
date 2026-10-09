@@ -18,11 +18,13 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	equality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
@@ -35,6 +37,11 @@ import (
 
 	skedv1 "github.com/schedkit/sked/api/v1"
 	"github.com/schedkit/sked/internal/trust"
+)
+
+var (
+	errEmptySched      = errors.New("spec.sched must not be empty")
+	errMissingVerifier = errors.New("signature verification is enabled but no verifier is configured")
 )
 
 // SchedulerReconciler reconciles a Scheduler object
@@ -59,10 +66,15 @@ func (r *SchedulerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	base := scx.DeepCopy()
+
+	scx.Status.ObservedGeneration = scx.Generation
+
 	image, err := r.resolveImage(ctx, &scx)
 	if err != nil {
 		logger.Error(err, "unable to resolve scheduler image")
-		return ctrl.Result{}, err
+		markReconcileFailure(&scx, resolveFailureReason(err), err)
+		return ctrl.Result{}, r.updateStatus(ctx, base, &scx, err)
 	}
 
 	ds := &appsv1.DaemonSet{
@@ -113,19 +125,49 @@ func (r *SchedulerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	})
 	if err != nil {
 		logger.Error(err, "unable to create or patch DaemonSet")
-		return ctrl.Result{}, err
+		markReconcileFailure(&scx, skedv1.ReasonReconcileFailed, err)
+		return ctrl.Result{}, r.updateStatus(ctx, base, &scx, err)
 	}
 
-	if scx.Status.ResolvedImage != image {
-		scx.Status.ResolvedImage = image
-		if err := r.Status().Update(ctx, &scx); err != nil {
-			logger.Error(err, "unable to update Scheduler status")
-			return ctrl.Result{}, err
-		}
+	scx.Status.ResolvedImage = image
+	applyDaemonSetStatus(&scx, ds)
+	if err := r.updateStatus(ctx, base, &scx, nil); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	logger.Info("DaemonSet successfully created or patched", "result", result, "image", image)
 	return ctrl.Result{}, nil
+}
+
+func (r *SchedulerReconciler) updateStatus(
+	ctx context.Context,
+	base, scx *skedv1.Scheduler,
+	reconcileErr error,
+) error {
+	if equality.Semantic.DeepEqual(base.Status, scx.Status) {
+		return reconcileErr
+	}
+	// Full Update, not a merge Patch: Patch omits the required zero-valued
+	// counters and fails status validation when there are no matching nodes.
+	if err := r.Status().Update(ctx, scx); err != nil {
+		statusErr := fmt.Errorf("update scheduler status: %w", err)
+		if reconcileErr != nil {
+			return errors.Join(reconcileErr, statusErr)
+		}
+		return statusErr
+	}
+	return reconcileErr
+}
+
+func resolveFailureReason(err error) string {
+	switch {
+	case errors.Is(err, errEmptySched):
+		return skedv1.ReasonSpecInvalid
+	case errors.Is(err, errMissingVerifier):
+		return skedv1.ReasonReconcileFailed
+	default:
+		return skedv1.ReasonImageVerificationFailed
+	}
 }
 
 // resolveImage returns the image reference the DaemonSet must run. When
@@ -135,13 +177,13 @@ func (r *SchedulerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 func (r *SchedulerReconciler) resolveImage(ctx context.Context, scx *skedv1.Scheduler) (string, error) {
 	image := strings.TrimSpace(scx.Spec.Sched)
 	if image == "" {
-		return "", fmt.Errorf("spec.sched must not be empty")
+		return "", errEmptySched
 	}
 	if r.Policy == nil || !r.Policy.Get().SignatureVerificationEnabled() {
 		return image, nil
 	}
 	if r.Verifier == nil {
-		return "", fmt.Errorf("signature verification is enabled but no verifier is configured")
+		return "", errMissingVerifier
 	}
 	pinned, err := r.Verifier.Verify(ctx, image)
 	if err != nil {
@@ -154,7 +196,9 @@ func (r *SchedulerReconciler) resolveImage(ctx context.Context, scx *skedv1.Sche
 func (r *SchedulerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&skedv1.Scheduler{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Owns(&appsv1.DaemonSet{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		// No predicate: DaemonSet status updates do not bump the generation but do
+		// carry the rollout state the Scheduler status is derived from.
+		Owns(&appsv1.DaemonSet{}).
 		Named("scheduler").
 		Complete(r)
 }

@@ -174,6 +174,7 @@ func TestE2E(t *testing.T) {
 		waitForDaemonSetImage(t, schedulerName, firstResolved)
 		waitForDaemonSetRollout(t, schedulerName)
 		assertDaemonSetOwnedByScheduler(t, schedulerName)
+		waitForSchedulerConditions(t, schedulerName)
 
 		// Out-of-band deletion and modification of the owned DaemonSet must be repaired.
 		deleteDaemonSet(t, schedulerName)
@@ -186,6 +187,7 @@ func TestE2E(t *testing.T) {
 		secondResolved := waitForSchedulerResolvedImageChange(t, schedulerName, firstResolved)
 		waitForDaemonSetImage(t, schedulerName, secondResolved)
 		waitForDaemonSetRollout(t, schedulerName)
+		waitForSchedulerConditions(t, schedulerName)
 
 		deleteScheduler(t, schedulerName)
 		waitForDaemonSetDeleted(t, schedulerName)
@@ -299,6 +301,29 @@ func waitForDaemonSetRollout(t *testing.T, name string) {
 		_, err := utils.Run(cmd)
 		assert.NoError(c, err, "DaemonSet %s did not roll out", name)
 	}, 3*time.Minute, 10*time.Second)
+}
+
+func waitForSchedulerConditions(t *testing.T, name string) {
+	t.Helper()
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		cmd := exec.Command("kubectl", "get", "scheduler", name, "-n", namespace,
+			"-o", "jsonpath={.metadata.generation}|{.status.observedGeneration}|"+
+				"{.status.conditions[?(@.type=='Ready')].status}|"+
+				"{.status.conditions[?(@.type=='Ready')].reason}")
+		output, err := utils.Run(cmd)
+		if !assert.NoError(c, err) {
+			return
+		}
+		fields := strings.Split(output, "|")
+		if !assert.Len(c, fields, 4) {
+			return
+		}
+
+		assert.Equal(c, fields[0], fields[1], "Scheduler %s status is not caught up with the spec", name)
+		assert.Contains(c, []string{"True", "False"}, fields[2], "Scheduler %s has no Ready condition", name)
+		assert.NotEmpty(c, fields[3], "Scheduler %s Ready condition has no reason", name)
+	}, eventuallyTimeout, eventuallyTick)
 }
 
 func waitForDaemonSetDeleted(t *testing.T, name string) {
