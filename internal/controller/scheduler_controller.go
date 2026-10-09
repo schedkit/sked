@@ -25,15 +25,19 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	equality "k8s.io/apimachinery/pkg/api/equality"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	skedv1 "github.com/schedkit/sked/api/v1"
 	"github.com/schedkit/sked/internal/trust"
@@ -69,6 +73,24 @@ func (r *SchedulerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	base := scx.DeepCopy()
 
 	scx.Status.ObservedGeneration = scx.Generation
+
+	active, err := r.activeScheduler(ctx)
+	if err != nil {
+		logger.Error(err, "unable to determine the active scheduler")
+		markReconcileFailure(&scx, skedv1.ReasonReconcileFailed, err)
+		return ctrl.Result{}, r.updateStatus(ctx, base, &scx, err)
+	}
+	if active != nil && (active.Namespace != scx.Namespace || active.Name != scx.Name) {
+		if err := r.releaseDaemonSet(ctx, &scx); err != nil {
+			logger.Error(err, "unable to remove the conflicting scheduler workload")
+			markReconcileFailure(&scx, skedv1.ReasonReconcileFailed, err)
+			return ctrl.Result{}, r.updateStatus(ctx, base, &scx, err)
+		}
+		markSchedulerConflict(&scx, active)
+		return ctrl.Result{}, r.updateStatus(ctx, base, &scx, nil)
+	}
+
+	markSchedulerActive(&scx)
 
 	image, err := r.resolveImage(ctx, &scx)
 	if err != nil {
@@ -159,6 +181,65 @@ func (r *SchedulerReconciler) updateStatus(
 	return reconcileErr
 }
 
+// activeScheduler picks the oldest Scheduler, breaking ties by namespace and
+// name, so the single active instance does not depend on reconcile timing.
+func (r *SchedulerReconciler) activeScheduler(ctx context.Context) (*skedv1.Scheduler, error) {
+	var schedulers skedv1.SchedulerList
+	if err := r.List(ctx, &schedulers); err != nil {
+		return nil, fmt.Errorf("list schedulers: %w", err)
+	}
+	if len(schedulers.Items) == 0 {
+		return nil, nil
+	}
+
+	active := &schedulers.Items[0]
+	for i := 1; i < len(schedulers.Items); i++ {
+		candidate := &schedulers.Items[i]
+		if schedulerPrecedes(candidate, active) {
+			active = candidate
+		}
+	}
+	return active, nil
+}
+
+func schedulerPrecedes(a, b *skedv1.Scheduler) bool {
+	if !a.CreationTimestamp.Equal(&b.CreationTimestamp) {
+		return a.CreationTimestamp.Before(&b.CreationTimestamp)
+	}
+	if a.Namespace != b.Namespace {
+		return a.Namespace < b.Namespace
+	}
+	return a.Name < b.Name
+}
+
+func (r *SchedulerReconciler) releaseDaemonSet(ctx context.Context, scx *skedv1.Scheduler) error {
+	ds := &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{Name: scx.Name, Namespace: scx.Namespace},
+	}
+	if err := r.Delete(ctx, ds); err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("delete conflicting DaemonSet %s/%s: %w", scx.Namespace, scx.Name, err)
+	}
+	return nil
+}
+
+func (r *SchedulerReconciler) schedulerRequests(ctx context.Context, _ client.Object) []reconcile.Request {
+	var schedulers skedv1.SchedulerList
+	if err := r.List(ctx, &schedulers); err != nil {
+		return nil
+	}
+
+	requests := make([]reconcile.Request, 0, len(schedulers.Items))
+	for i := range schedulers.Items {
+		requests = append(requests, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: schedulers.Items[i].Namespace,
+				Name:      schedulers.Items[i].Name,
+			},
+		})
+	}
+	return requests
+}
+
 func resolveFailureReason(err error) string {
 	switch {
 	case errors.Is(err, errEmptySched):
@@ -196,6 +277,7 @@ func (r *SchedulerReconciler) resolveImage(ctx context.Context, scx *skedv1.Sche
 func (r *SchedulerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&skedv1.Scheduler{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&skedv1.Scheduler{}, handler.EnqueueRequestsFromMapFunc(r.schedulerRequests)).
 		// No predicate: DaemonSet status updates do not bump the generation but do
 		// carry the rollout state the Scheduler status is derived from.
 		Owns(&appsv1.DaemonSet{}).

@@ -41,6 +41,29 @@ func setSchedulerCondition(
 	})
 }
 
+func markSchedulerActive(scx *skedv1.Scheduler) {
+	setSchedulerCondition(scx, skedv1.SchedulerConditionActive, metav1.ConditionTrue,
+		skedv1.ReasonActiveScheduler, "this Scheduler is the active scheduler")
+}
+
+func markSchedulerConflict(scx, active *skedv1.Scheduler) {
+	scx.Status.ResolvedImage = ""
+	scx.Status.Nodes = skedv1.SchedulerNodeStatus{}
+
+	message := fmt.Sprintf(
+		"scheduler %s/%s is the active scheduler; only one Scheduler may be active at a time",
+		active.Namespace, active.Name,
+	)
+	setSchedulerCondition(scx, skedv1.SchedulerConditionActive, metav1.ConditionFalse,
+		skedv1.ReasonSchedulerConflict, message)
+	setSchedulerCondition(scx, skedv1.SchedulerConditionReady, metav1.ConditionFalse,
+		skedv1.ReasonSchedulerConflict, message)
+	setSchedulerCondition(scx, skedv1.SchedulerConditionProgressing, metav1.ConditionFalse,
+		skedv1.ReasonSchedulerConflict, message)
+	setSchedulerCondition(scx, skedv1.SchedulerConditionDegraded, metav1.ConditionTrue,
+		skedv1.ReasonSchedulerConflict, message)
+}
+
 func markReconcileFailure(scx *skedv1.Scheduler, reason string, err error) {
 	setSchedulerCondition(scx, skedv1.SchedulerConditionReady, metav1.ConditionFalse,
 		reason, err.Error())
