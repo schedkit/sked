@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 	admissionv1 "k8s.io/api/admission/v1"
 	authenticationv1 "k8s.io/api/authentication/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	admission "sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -166,6 +167,65 @@ func TestValidateCreate(t *testing.T) {
 
 		_, err := v.ValidateCreate(ctx, scheduler("default", trustedImage))
 		require.NoError(t, err)
+	})
+}
+
+func TestValidateSpecFields(t *testing.T) {
+	trustedImage := "ghcr.io/schedkit/scx_rusty:latest"
+
+	ctx := admission.NewContextWithRequest(context.Background(), requestWithIdentity("default", "alice"))
+	validator := &SchedulerValidator{Policy: staticPolicy{trust.DefaultPolicy()}, Verifier: &fakeVerifier{}}
+
+	t.Run("allows node targeting, args, env, and pull settings", func(t *testing.T) {
+		scx := scheduler("default", trustedImage)
+		scx.Spec.NodeSelector = map[string]string{"role": "worker"}
+		scx.Spec.Tolerations = []corev1.Toleration{{Key: "dedicated", Operator: corev1.TolerationOpExists}}
+		scx.Spec.Args = []string{"--verbose"}
+		scx.Spec.Env = []corev1.EnvVar{{Name: "RUST_LOG", Value: "info"}}
+		scx.Spec.ImagePullSecrets = []corev1.LocalObjectReference{{Name: "registry-creds"}}
+
+		_, err := validator.ValidateCreate(ctx, scx)
+		require.NoError(t, err)
+	})
+
+	t.Run("rejects an invalid node selector key", func(t *testing.T) {
+		scx := scheduler("default", trustedImage)
+		scx.Spec.NodeSelector = map[string]string{"role/": "worker"}
+
+		_, err := validator.ValidateCreate(ctx, scx)
+		require.ErrorContains(t, err, "spec.nodeSelector")
+	})
+
+	t.Run("rejects an invalid node selector value", func(t *testing.T) {
+		scx := scheduler("default", trustedImage)
+		scx.Spec.NodeSelector = map[string]string{"role": "not a value!"}
+
+		_, err := validator.ValidateCreate(ctx, scx)
+		require.ErrorContains(t, err, "spec.nodeSelector")
+	})
+
+	t.Run("rejects an invalid environment variable name", func(t *testing.T) {
+		scx := scheduler("default", trustedImage)
+		scx.Spec.Env = []corev1.EnvVar{{Name: "BAD=NAME", Value: "x"}}
+
+		_, err := validator.ValidateCreate(ctx, scx)
+		require.ErrorContains(t, err, "spec.env[0]")
+	})
+
+	t.Run("rejects duplicate environment variable names", func(t *testing.T) {
+		scx := scheduler("default", trustedImage)
+		scx.Spec.Env = []corev1.EnvVar{{Name: "RUST_LOG"}, {Name: "RUST_LOG"}}
+
+		_, err := validator.ValidateCreate(ctx, scx)
+		require.ErrorContains(t, err, "duplicate")
+	})
+
+	t.Run("rejects an empty image pull secret name", func(t *testing.T) {
+		scx := scheduler("default", trustedImage)
+		scx.Spec.ImagePullSecrets = []corev1.LocalObjectReference{{Name: ""}}
+
+		_, err := validator.ValidateCreate(ctx, scx)
+		require.ErrorContains(t, err, "spec.imagePullSecrets[0]")
 	})
 }
 

@@ -24,6 +24,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	skedv1 "github.com/schedkit/sked/api/v1"
 )
@@ -168,13 +169,17 @@ func TestMarkSchedulerConflict(t *testing.T) {
 	scx := &skedv1.Scheduler{ObjectMeta: metav1.ObjectMeta{Generation: 4}}
 	scx.Status.ResolvedImage = "example.com/sched@sha256:abc"
 	scx.Status.Nodes = skedv1.SchedulerNodeStatus{Desired: 1, Ready: 1, Available: 1}
-	active := &skedv1.Scheduler{ObjectMeta: metav1.ObjectMeta{Name: "active", Namespace: "default"}}
+	conflicts := []nodeConflict{
+		{node: "node-b", hostname: "node-b", winner: types.NamespacedName{Namespace: "default", Name: "active"}},
+		{node: "node-a", hostname: "node-a", winner: types.NamespacedName{Namespace: "default", Name: "active"}},
+	}
 
-	markSchedulerConflict(scx, active)
+	markSchedulerConflict(scx, conflicts)
 
 	activeCondition := conditionFor(t, scx, skedv1.SchedulerConditionActive)
 	require.Equal(t, metav1.ConditionFalse, activeCondition.Status)
 	require.Equal(t, skedv1.ReasonSchedulerConflict, activeCondition.Reason)
+	require.Contains(t, activeCondition.Message, "node-a, node-b")
 	require.Contains(t, activeCondition.Message, "default/active")
 	require.Equal(t, int64(4), activeCondition.ObservedGeneration)
 	require.Equal(t, metav1.ConditionFalse, conditionFor(t, scx, skedv1.SchedulerConditionReady).Status)
@@ -182,6 +187,23 @@ func TestMarkSchedulerConflict(t *testing.T) {
 	require.Equal(t, metav1.ConditionTrue, conditionFor(t, scx, skedv1.SchedulerConditionDegraded).Status)
 	require.Equal(t, skedv1.SchedulerNodeStatus{}, scx.Status.Nodes)
 	require.Empty(t, scx.Status.ResolvedImage)
+}
+
+func TestMarkSchedulerNodeConflict(t *testing.T) {
+	scx := &skedv1.Scheduler{ObjectMeta: metav1.ObjectMeta{Generation: 4}}
+	scx.Status.Nodes = skedv1.SchedulerNodeStatus{Desired: 1, Ready: 1, Available: 1}
+	conflicts := []nodeConflict{
+		{node: "node-a", hostname: "node-a", winner: types.NamespacedName{Namespace: "default", Name: "active"}},
+	}
+
+	markSchedulerNodeConflict(scx, conflicts)
+
+	degraded := conditionFor(t, scx, skedv1.SchedulerConditionDegraded)
+	require.Equal(t, metav1.ConditionTrue, degraded.Status)
+	require.Equal(t, skedv1.ReasonSchedulerConflict, degraded.Reason)
+	require.Contains(t, degraded.Message, "node-a")
+	require.Equal(t, int64(4), degraded.ObservedGeneration)
+	require.Nil(t, meta.FindStatusCondition(scx.Status.Conditions, skedv1.SchedulerConditionReady))
 }
 
 func TestResolveFailureReason(t *testing.T) {

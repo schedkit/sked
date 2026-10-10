@@ -18,6 +18,8 @@ package controller
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -46,14 +48,11 @@ func markSchedulerActive(scx *skedv1.Scheduler) {
 		skedv1.ReasonActiveScheduler, "this Scheduler is the active scheduler")
 }
 
-func markSchedulerConflict(scx, active *skedv1.Scheduler) {
+func markSchedulerConflict(scx *skedv1.Scheduler, conflicts []nodeConflict) {
 	scx.Status.ResolvedImage = ""
 	scx.Status.Nodes = skedv1.SchedulerNodeStatus{}
 
-	message := fmt.Sprintf(
-		"scheduler %s/%s is the active scheduler; only one Scheduler may be active at a time",
-		active.Namespace, active.Name,
-	)
+	message := conflictMessage(conflicts)
 	setSchedulerCondition(scx, skedv1.SchedulerConditionActive, metav1.ConditionFalse,
 		skedv1.ReasonSchedulerConflict, message)
 	setSchedulerCondition(scx, skedv1.SchedulerConditionReady, metav1.ConditionFalse,
@@ -62,6 +61,32 @@ func markSchedulerConflict(scx, active *skedv1.Scheduler) {
 		skedv1.ReasonSchedulerConflict, message)
 	setSchedulerCondition(scx, skedv1.SchedulerConditionDegraded, metav1.ConditionTrue,
 		skedv1.ReasonSchedulerConflict, message)
+}
+
+func markSchedulerNodeConflict(scx *skedv1.Scheduler, conflicts []nodeConflict) {
+	setSchedulerCondition(scx, skedv1.SchedulerConditionDegraded, metav1.ConditionTrue,
+		skedv1.ReasonSchedulerConflict, conflictMessage(conflicts))
+}
+
+func conflictMessage(conflicts []nodeConflict) string {
+	nodes := make([]string, 0, len(conflicts))
+	winners := map[string]struct{}{}
+	for i := range conflicts {
+		nodes = append(nodes, conflicts[i].node)
+		winners[conflicts[i].winner.String()] = struct{}{}
+	}
+	sort.Strings(nodes)
+
+	owners := make([]string, 0, len(winners))
+	for winner := range winners {
+		owners = append(owners, winner)
+	}
+	sort.Strings(owners)
+
+	return fmt.Sprintf(
+		"nodes %s are already served by scheduler(s) %s; a node runs only one scheduler at a time",
+		strings.Join(nodes, ", "), strings.Join(owners, ", "),
+	)
 }
 
 func markReconcileFailure(scx *skedv1.Scheduler, reason string, err error) {
