@@ -17,6 +17,7 @@ limitations under the License.
 package controller
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -28,6 +29,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	skedv1 "github.com/schedkit/sked/api/v1"
@@ -350,6 +353,21 @@ func TestSchedulerReconcileFailsOverWhenActiveSchedulerIsDeleted(t *testing.T) {
 
 	var secondDS appsv1.DaemonSet
 	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: second.Name, Namespace: "default"}, &secondDS))
+}
+
+func TestSchedulerReconcileSkipsLoggingMissingScheduler(t *testing.T) {
+	ctx, k8sClient := newTestEnv(t)
+
+	var logs bytes.Buffer
+	ctx = logf.IntoContext(ctx, zap.New(zap.WriteTo(&logs), zap.UseDevMode(true)))
+
+	r := &SchedulerReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+
+	_, err := r.Reconcile(ctx, reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "missing-scheduler", Namespace: "default"},
+	})
+	require.NoError(t, err)
+	require.NotContains(t, logs.String(), "unable to fetch Scheduler")
 }
 
 func TestReleaseDaemonSet(t *testing.T) {
