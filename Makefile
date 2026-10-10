@@ -59,6 +59,14 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+.PHONY: verify-generated
+verify-generated: manifests generate ## Fail when generated manifests or code are not committed.
+	@test -z "$$(git status --porcelain --untracked-files=all -- api config)" || { \
+		git status --porcelain --untracked-files=all -- api config; \
+		echo "generated files are out of date; run 'make manifests generate' and commit the result"; \
+		exit 1; \
+	}
+
 .PHONY: test
 test: manifests generate fmt vet envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
