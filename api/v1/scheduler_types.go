@@ -17,6 +17,7 @@ limitations under the License.
 package v1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -27,6 +28,31 @@ import (
 type SchedulerSpec struct {
 	// Sched specifies the URI of the OCI scheduler artifact
 	Sched string `json:"sched"`
+
+	// NodeSelector limits the scheduler workload to nodes carrying every
+	// listed label. An empty selector targets every node the tolerations allow.
+	// +optional
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// Tolerations allow the scheduler workload to run on tainted nodes.
+	// +optional
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// Args are the arguments passed to the scheduler container.
+	// +optional
+	Args []string `json:"args,omitempty"`
+
+	// Env is the environment exposed to the scheduler container.
+	// +optional
+	Env []corev1.EnvVar `json:"env,omitempty"`
+
+	// ImagePullSecrets are the secrets used to pull the scheduler image.
+	// +optional
+	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
+
+	// Resources describes the compute resources reserved for the scheduler container.
+	// +optional
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 }
 
 const (

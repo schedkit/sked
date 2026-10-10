@@ -7,3 +7,16 @@ metadata:
   name: scheduler-sample
 spec:
   sched: "ghcr.io/schedkit/scx_rusty:latest"
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""
+  tolerations:
+  - key: dedicated
+    operator: Exists
+    effect: NoSchedule
+  args:
+  - "--verbose"
+  env:
+  - name: RUST_LOG
+    value: info
+  imagePullSecrets:
+  - name: registry-creds

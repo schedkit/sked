@@ -22,6 +22,8 @@ import (
 	"strings"
 
 	authenticationv1 "k8s.io/api/authentication/v1"
+	content "k8s.io/apimachinery/pkg/api/validate/content"
+	"k8s.io/apimachinery/pkg/util/validation"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
@@ -70,6 +72,10 @@ func (v *SchedulerValidator) validate(ctx context.Context, scx *skedv1.Scheduler
 		return fmt.Errorf("namespace %q is not allowed to host Scheduler objects", namespace)
 	}
 
+	if err := validateSpec(scx); err != nil {
+		return err
+	}
+
 	image := strings.TrimSpace(scx.Spec.Sched)
 	if image == "" {
 		return fmt.Errorf("spec.sched must not be empty")
@@ -85,6 +91,41 @@ func (v *SchedulerValidator) validate(ctx context.Context, scx *skedv1.Scheduler
 			return fmt.Errorf("image %q failed signature verification: %w", image, err)
 		}
 	}
+	return nil
+}
+
+func validateSpec(scx *skedv1.Scheduler) error {
+	for key, value := range scx.Spec.NodeSelector {
+		if errs := content.IsLabelKey(key); len(errs) > 0 {
+			return fmt.Errorf("spec.nodeSelector key %q is invalid: %s", key, strings.Join(errs, "; "))
+		}
+		if errs := content.IsLabelValue(value); len(errs) > 0 {
+			return fmt.Errorf("spec.nodeSelector[%q] value is invalid: %s", key, strings.Join(errs, "; "))
+		}
+	}
+
+	seenEnv := make(map[string]struct{}, len(scx.Spec.Env))
+	for i := range scx.Spec.Env {
+		name := scx.Spec.Env[i].Name
+		if errs := validation.IsEnvVarName(name); len(errs) > 0 {
+			return fmt.Errorf("spec.env[%d] name %q is invalid: %s", i, name, strings.Join(errs, "; "))
+		}
+		if _, ok := seenEnv[name]; ok {
+			return fmt.Errorf("spec.env contains duplicate name %q", name)
+		}
+		seenEnv[name] = struct{}{}
+	}
+
+	for i := range scx.Spec.ImagePullSecrets {
+		name := scx.Spec.ImagePullSecrets[i].Name
+		if name == "" {
+			return fmt.Errorf("spec.imagePullSecrets[%d].name must not be empty", i)
+		}
+		if errs := content.IsDNS1123Subdomain(name); len(errs) > 0 {
+			return fmt.Errorf("spec.imagePullSecrets[%d].name %q is invalid: %s", i, name, strings.Join(errs, "; "))
+		}
+	}
+
 	return nil
 }
 

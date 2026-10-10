@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -56,6 +57,7 @@ type SchedulerReconciler struct {
 	Verifier trust.Verifier
 }
 
+// +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=daemonsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sked.schedkit.io,resources=schedulers,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sked.schedkit.io,resources=schedulers/status,verbs=get;update;patch
@@ -79,22 +81,21 @@ func (r *SchedulerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	scx.Status.ObservedGeneration = scx.Generation
 
-	active, err := r.activeScheduler(ctx)
+	selected, conflicts, err := r.nodeAssignments(ctx, &scx)
 	if err != nil {
-		logger.Error(err, "unable to determine the active scheduler")
+		logger.Error(err, "unable to determine node assignments")
 		markReconcileFailure(&scx, skedv1.ReasonReconcileFailed, err)
 		return ctrl.Result{}, r.updateStatus(ctx, base, &scx, err)
 	}
-	if active != nil && (active.Namespace != scx.Namespace || active.Name != scx.Name) {
+	if selected > 0 && len(conflicts) == selected {
 		if err := r.releaseDaemonSet(ctx, &scx); err != nil {
 			logger.Error(err, "unable to remove the conflicting scheduler workload")
 			markReconcileFailure(&scx, skedv1.ReasonReconcileFailed, err)
 			return ctrl.Result{}, r.updateStatus(ctx, base, &scx, err)
 		}
-		markSchedulerConflict(&scx, active)
+		markSchedulerConflict(&scx, conflicts)
 		return ctrl.Result{}, r.updateStatus(ctx, base, &scx, nil)
 	}
-
 	markSchedulerActive(&scx)
 
 	image, err := r.resolveImage(ctx, &scx)
@@ -134,17 +135,7 @@ func (r *SchedulerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 						"managed-by": "sked-controller",
 					},
 				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:  "scx",
-							Image: image,
-							SecurityContext: &corev1.SecurityContext{
-								Privileged: ptr.To(true),
-							},
-						},
-					},
-				},
+				Spec: podSpec(&scx, image, conflicts),
 			},
 		}
 
@@ -158,6 +149,9 @@ func (r *SchedulerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	scx.Status.ResolvedImage = image
 	applyDaemonSetStatus(&scx, ds)
+	if len(conflicts) > 0 {
+		markSchedulerNodeConflict(&scx, conflicts)
+	}
 	if err := r.updateStatus(ctx, base, &scx, nil); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -186,25 +180,38 @@ func (r *SchedulerReconciler) updateStatus(
 	return reconcileErr
 }
 
-// activeScheduler picks the oldest Scheduler, breaking ties by namespace and
-// name, so the single active instance does not depend on reconcile timing.
-func (r *SchedulerReconciler) activeScheduler(ctx context.Context) (*skedv1.Scheduler, error) {
+func (r *SchedulerReconciler) nodeAssignments(ctx context.Context, scx *skedv1.Scheduler) (int, []nodeConflict, error) {
+	var nodes corev1.NodeList
+	if err := r.List(ctx, &nodes); err != nil {
+		return 0, nil, fmt.Errorf("list nodes: %w", err)
+	}
 	var schedulers skedv1.SchedulerList
 	if err := r.List(ctx, &schedulers); err != nil {
-		return nil, fmt.Errorf("list schedulers: %w", err)
-	}
-	if len(schedulers.Items) == 0 {
-		return nil, nil
+		return 0, nil, fmt.Errorf("list schedulers: %w", err)
 	}
 
-	active := &schedulers.Items[0]
-	for i := 1; i < len(schedulers.Items); i++ {
-		candidate := &schedulers.Items[i]
-		if schedulerPrecedes(candidate, active) {
-			active = candidate
+	selected := 0
+	var conflicts []nodeConflict
+	for i := range nodes.Items {
+		node := &nodes.Items[i]
+		if !schedulerSelectsNode(scx, node) {
+			continue
+		}
+		selected++
+		winner := winningScheduler(schedulers.Items, node)
+		if winner != nil && (winner.Namespace != scx.Namespace || winner.Name != scx.Name) {
+			hostname := node.Labels[corev1.LabelHostname]
+			if hostname == "" {
+				hostname = node.Name
+			}
+			conflicts = append(conflicts, nodeConflict{
+				node:     node.Name,
+				hostname: hostname,
+				winner:   types.NamespacedName{Namespace: winner.Namespace, Name: winner.Name},
+			})
 		}
 	}
-	return active, nil
+	return selected, conflicts, nil
 }
 
 func schedulerPrecedes(a, b *skedv1.Scheduler) bool {
@@ -278,11 +285,59 @@ func (r *SchedulerReconciler) resolveImage(ctx context.Context, scx *skedv1.Sche
 	return pinned, nil
 }
 
+func podSpec(scx *skedv1.Scheduler, image string, conflicts []nodeConflict) corev1.PodSpec {
+	spec := corev1.PodSpec{
+		NodeSelector:     scx.Spec.NodeSelector,
+		Tolerations:      scx.Spec.Tolerations,
+		ImagePullSecrets: scx.Spec.ImagePullSecrets,
+		Containers: []corev1.Container{
+			{
+				Name:      "scx",
+				Image:     image,
+				Args:      scx.Spec.Args,
+				Env:       scx.Spec.Env,
+				Resources: scx.Spec.Resources,
+				SecurityContext: &corev1.SecurityContext{
+					Privileged: ptr.To(true),
+				},
+			},
+		},
+	}
+	if len(conflicts) == 0 {
+		return spec
+	}
+
+	hostnames := make([]string, 0, len(conflicts))
+	for i := range conflicts {
+		hostnames = append(hostnames, conflicts[i].hostname)
+	}
+	sort.Strings(hostnames)
+	spec.Affinity = &corev1.Affinity{
+		NodeAffinity: &corev1.NodeAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+				NodeSelectorTerms: []corev1.NodeSelectorTerm{
+					{
+						MatchExpressions: []corev1.NodeSelectorRequirement{
+							{
+								Key:      corev1.LabelHostname,
+								Operator: corev1.NodeSelectorOpNotIn,
+								Values:   hostnames,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	return spec
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *SchedulerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&skedv1.Scheduler{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&skedv1.Scheduler{}, handler.EnqueueRequestsFromMapFunc(r.schedulerRequests)).
+		Watches(&corev1.Node{}, handler.EnqueueRequestsFromMapFunc(r.schedulerRequests)).
 		// No predicate: DaemonSet status updates do not bump the generation but do
 		// carry the rollout state the Scheduler status is derived from.
 		Owns(&appsv1.DaemonSet{}).
