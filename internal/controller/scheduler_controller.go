@@ -34,6 +34,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -55,6 +56,7 @@ type SchedulerReconciler struct {
 	Scheme   *runtime.Scheme
 	Policy   trust.PolicyProvider
 	Verifier trust.Verifier
+	Options  ReconcileOptions
 }
 
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
@@ -334,6 +336,7 @@ func podSpec(scx *skedv1.Scheduler, image string, conflicts []nodeConflict) core
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *SchedulerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	options := r.Options.withDefaults()
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&skedv1.Scheduler{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&skedv1.Scheduler{}, handler.EnqueueRequestsFromMapFunc(r.schedulerRequests)).
@@ -341,6 +344,11 @@ func (r *SchedulerReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// No predicate: DaemonSet status updates do not bump the generation but do
 		// carry the rollout state the Scheduler status is derived from.
 		Owns(&appsv1.DaemonSet{}).
+		WithOptions(controller.Options{
+			MaxConcurrentReconciles: options.MaxConcurrent,
+			ReconciliationTimeout:   options.Timeout,
+			RateLimiter:             options.rateLimiter(),
+		}).
 		Named("scheduler").
 		Complete(r)
 }

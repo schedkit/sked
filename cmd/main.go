@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -63,6 +64,12 @@ func main() {
 	var trustPolicyConfigMap string
 	var trustPolicyNamespace string
 	var trustPolicyKey string
+	var reconcileTimeout time.Duration
+	var maxConcurrentReconciles int
+	var reconcileRateLimitQPS float64
+	var reconcileRateLimitBurst int
+	var reconcileRetryBaseDelay time.Duration
+	var reconcileRetryMaxDelay time.Duration
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -80,6 +87,18 @@ func main() {
 		"Namespace of the scheduler image trust policy ConfigMap. Defaults to the manager namespace.")
 	flag.StringVar(&trustPolicyKey, "trust-policy-configmap-key", trust.DefaultConfigMapKey,
 		"Key inside the trust policy ConfigMap that carries the policy document.")
+	flag.DurationVar(&reconcileTimeout, "reconcile-timeout", controller.DefaultReconcileTimeout,
+		"Maximum duration of a single reconcile, bounding image verification and API calls.")
+	flag.IntVar(&maxConcurrentReconciles, "max-concurrent-reconciles", controller.DefaultMaxConcurrentReconciles,
+		"Maximum number of Scheduler reconciles processed concurrently.")
+	flag.Float64Var(&reconcileRateLimitQPS, "reconcile-rate-limit-qps", controller.DefaultRateLimitQPS,
+		"Overall rate at which failed reconciles are requeued, in requests per second.")
+	flag.IntVar(&reconcileRateLimitBurst, "reconcile-rate-limit-burst", controller.DefaultRateLimitBurst,
+		"Maximum burst of failed reconciles requeued at the overall rate.")
+	flag.DurationVar(&reconcileRetryBaseDelay, "reconcile-retry-base-delay", controller.DefaultRetryBaseDelay,
+		"First requeue delay for a failed reconcile, doubling after every failure.")
+	flag.DurationVar(&reconcileRetryMaxDelay, "reconcile-retry-max-delay", controller.DefaultRetryMaxDelay,
+		"Upper bound on the exponential requeue delay for a failed reconcile.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -178,6 +197,14 @@ func main() {
 		Scheme:   mgr.GetScheme(),
 		Policy:   policyStore,
 		Verifier: verifier,
+		Options: controller.ReconcileOptions{
+			Timeout:        reconcileTimeout,
+			MaxConcurrent:  maxConcurrentReconciles,
+			RateLimitQPS:   reconcileRateLimitQPS,
+			RateLimitBurst: reconcileRateLimitBurst,
+			RetryBaseDelay: reconcileRetryBaseDelay,
+			RetryMaxDelay:  reconcileRetryMaxDelay,
+		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Scheduler")
 		os.Exit(1)
