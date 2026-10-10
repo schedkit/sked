@@ -170,8 +170,8 @@ func TestMarkSchedulerConflict(t *testing.T) {
 	scx.Status.ResolvedImage = "example.com/sched@sha256:abc"
 	scx.Status.Nodes = skedv1.SchedulerNodeStatus{Desired: 1, Ready: 1, Available: 1}
 	conflicts := []nodeConflict{
-		{node: "node-b", hostname: "node-b", winner: types.NamespacedName{Namespace: "default", Name: "active"}},
-		{node: "node-a", hostname: "node-a", winner: types.NamespacedName{Namespace: "default", Name: "active"}},
+		{node: "node-b", hostname: "node-b", winner: types.NamespacedName{Name: "active"}},
+		{node: "node-a", hostname: "node-a", winner: types.NamespacedName{Name: "active"}},
 	}
 
 	markSchedulerConflict(scx, conflicts)
@@ -180,7 +180,7 @@ func TestMarkSchedulerConflict(t *testing.T) {
 	require.Equal(t, metav1.ConditionFalse, activeCondition.Status)
 	require.Equal(t, skedv1.ReasonSchedulerConflict, activeCondition.Reason)
 	require.Contains(t, activeCondition.Message, "node-a, node-b")
-	require.Contains(t, activeCondition.Message, "default/active")
+	require.Contains(t, activeCondition.Message, "active")
 	require.Equal(t, int64(4), activeCondition.ObservedGeneration)
 	require.Equal(t, metav1.ConditionFalse, conditionFor(t, scx, skedv1.SchedulerConditionReady).Status)
 	require.Equal(t, metav1.ConditionFalse, conditionFor(t, scx, skedv1.SchedulerConditionProgressing).Status)
@@ -193,7 +193,7 @@ func TestMarkSchedulerNodeConflict(t *testing.T) {
 	scx := &skedv1.Scheduler{ObjectMeta: metav1.ObjectMeta{Generation: 4}}
 	scx.Status.Nodes = skedv1.SchedulerNodeStatus{Desired: 1, Ready: 1, Available: 1}
 	conflicts := []nodeConflict{
-		{node: "node-a", hostname: "node-a", winner: types.NamespacedName{Namespace: "default", Name: "active"}},
+		{node: "node-a", hostname: "node-a", winner: types.NamespacedName{Name: "active"}},
 	}
 
 	markSchedulerNodeConflict(scx, conflicts)

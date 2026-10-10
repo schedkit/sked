@@ -69,7 +69,6 @@ type CosignPolicy struct {
 type Policy struct {
 	AllowedImages     []string     `json:"allowedImages,omitempty"`
 	VerifySignatures  *bool        `json:"verifySignatures,omitempty"`
-	AllowedNamespaces []string     `json:"allowedNamespaces,omitempty"`
 	AllowedIdentities Identities   `json:"allowedIdentities,omitempty"`
 	Cosign            CosignPolicy `json:"cosign,omitempty"`
 }
@@ -139,18 +138,6 @@ func (p *Policy) Validate() error {
 		}
 	}
 	return nil
-}
-
-func (p *Policy) AllowsNamespace(namespace string) bool {
-	if len(p.AllowedNamespaces) == 0 {
-		return true
-	}
-	for _, allowed := range p.AllowedNamespaces {
-		if allowed == namespace {
-			return true
-		}
-	}
-	return false
 }
 
 func (p *Policy) AllowsIdentity(info authenticationv1.UserInfo) bool {

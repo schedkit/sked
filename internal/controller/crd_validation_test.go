@@ -42,7 +42,7 @@ func TestSchedulerReferenceSchemaValidation(t *testing.T) {
 	}
 	for i, image := range valid {
 		scx := &skedv1.Scheduler{
-			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("valid-reference-%d", i), Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("valid-reference-%d", i)},
 			Spec:       skedv1.SchedulerSpec{Sched: image},
 		}
 		require.NoError(t, k8sClient.Create(ctx, scx), "expected %q to be accepted", image)
@@ -60,7 +60,7 @@ func TestSchedulerReferenceSchemaValidation(t *testing.T) {
 	}
 	for i, image := range invalid {
 		scx := &skedv1.Scheduler{
-			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("invalid-reference-%d", i), Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("invalid-reference-%d", i)},
 			Spec:       skedv1.SchedulerSpec{Sched: image},
 		}
 		err := k8sClient.Create(ctx, scx)

@@ -119,26 +119,6 @@ func TestValidateCreate(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("allows a scheduler in an allowed namespace", func(t *testing.T) {
-		policy := trust.DefaultPolicy()
-		policy.AllowedNamespaces = []string{"schedulers"}
-		v := &SchedulerValidator{Policy: staticPolicy{policy}, Verifier: &fakeVerifier{}}
-		ctx := admission.NewContextWithRequest(context.Background(), requestWithIdentity("schedulers", "alice"))
-
-		_, err := v.ValidateCreate(ctx, scheduler("schedulers", trustedImage))
-		require.NoError(t, err)
-	})
-
-	t.Run("rejects a disallowed namespace", func(t *testing.T) {
-		policy := trust.DefaultPolicy()
-		policy.AllowedNamespaces = []string{"schedulers"}
-		v := &SchedulerValidator{Policy: staticPolicy{policy}, Verifier: &fakeVerifier{}}
-		ctx := admission.NewContextWithRequest(context.Background(), requestWithIdentity("default", "alice"))
-
-		_, err := v.ValidateCreate(ctx, scheduler("default", trustedImage))
-		require.ErrorContains(t, err, "namespace")
-	})
-
 	t.Run("rejects a disallowed identity", func(t *testing.T) {
 		policy := trust.DefaultPolicy()
 		policy.AllowedIdentities = trust.Identities{Users: []string{"alice"}}
