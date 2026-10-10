@@ -27,6 +27,9 @@ import (
 // SchedulerSpec defines the desired state of Scheduler.
 type SchedulerSpec struct {
 	// Sched specifies the URI of the OCI scheduler artifact
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:Pattern=`^(([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*(:[0-9]+)?/)?[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*(/[a-z0-9]+((\.|_|__|-+)[a-z0-9]+)*)*(:[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127})?(@[a-zA-Z][a-zA-Z0-9]*([._+-][a-zA-Z0-9]+)*:[a-fA-F0-9]{32,})?$`
+	// +kubebuilder:validation:XValidation:rule="!self.contains('@') || self.matches('^.*@sha256:[a-fA-F0-9]{64}$')",message="spec.sched must pin a sha256 digest of 64 hex characters"
 	Sched string `json:"sched"`
 
 	// NodeSelector limits the scheduler workload to nodes carrying every
