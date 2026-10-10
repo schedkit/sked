@@ -57,6 +57,8 @@ type SchedulerReconciler struct {
 	Policy   trust.PolicyProvider
 	Verifier trust.Verifier
 	Options  ReconcileOptions
+
+	WorkloadNamespace string
 }
 
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
@@ -110,7 +112,7 @@ func (r *SchedulerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	ds := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      req.Name,
-			Namespace: req.Namespace,
+			Namespace: r.workloadNamespace(),
 		},
 	}
 
@@ -201,7 +203,7 @@ func (r *SchedulerReconciler) nodeAssignments(ctx context.Context, scx *skedv1.S
 		}
 		selected++
 		winner := winningScheduler(schedulers.Items, node)
-		if winner != nil && (winner.Namespace != scx.Namespace || winner.Name != scx.Name) {
+		if winner != nil && winner.Name != scx.Name {
 			hostname := node.Labels[corev1.LabelHostname]
 			if hostname == "" {
 				hostname = node.Name
@@ -209,7 +211,7 @@ func (r *SchedulerReconciler) nodeAssignments(ctx context.Context, scx *skedv1.S
 			conflicts = append(conflicts, nodeConflict{
 				node:     node.Name,
 				hostname: hostname,
-				winner:   types.NamespacedName{Namespace: winner.Namespace, Name: winner.Name},
+				winner:   types.NamespacedName{Name: winner.Name},
 			})
 		}
 	}
@@ -220,18 +222,22 @@ func schedulerPrecedes(a, b *skedv1.Scheduler) bool {
 	if !a.CreationTimestamp.Equal(&b.CreationTimestamp) {
 		return a.CreationTimestamp.Before(&b.CreationTimestamp)
 	}
-	if a.Namespace != b.Namespace {
-		return a.Namespace < b.Namespace
-	}
 	return a.Name < b.Name
+}
+
+func (r *SchedulerReconciler) workloadNamespace() string {
+	if r.WorkloadNamespace != "" {
+		return r.WorkloadNamespace
+	}
+	return metav1.NamespaceDefault
 }
 
 func (r *SchedulerReconciler) releaseDaemonSet(ctx context.Context, scx *skedv1.Scheduler) error {
 	ds := &appsv1.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{Name: scx.Name, Namespace: scx.Namespace},
+		ObjectMeta: metav1.ObjectMeta{Name: scx.Name, Namespace: r.workloadNamespace()},
 	}
 	if err := r.Delete(ctx, ds); err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("delete conflicting DaemonSet %s/%s: %w", scx.Namespace, scx.Name, err)
+		return fmt.Errorf("delete conflicting DaemonSet %s/%s: %w", ds.Namespace, scx.Name, err)
 	}
 	return nil
 }
@@ -245,10 +251,7 @@ func (r *SchedulerReconciler) schedulerRequests(ctx context.Context, _ client.Ob
 	requests := make([]reconcile.Request, 0, len(schedulers.Items))
 	for i := range schedulers.Items {
 		requests = append(requests, reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Namespace: schedulers.Items[i].Namespace,
-				Name:      schedulers.Items[i].Name,
-			},
+			NamespacedName: types.NamespacedName{Name: schedulers.Items[i].Name},
 		})
 	}
 	return requests

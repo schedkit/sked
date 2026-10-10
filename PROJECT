@@ -10,7 +10,7 @@ repo: github.com/schedkit/sked
 resources:
 - api:
     crdVersion: v1
-    namespaced: true
+    namespaced: false
   controller: true
   domain: schedkit.io
   group: sked

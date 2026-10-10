@@ -12,7 +12,7 @@ spec:
     listKind: SchedulerList
     plural: schedulers
     singular: scheduler
-  scope: Namespaced
+  scope: Cluster
   versions:
   - additionalPrinterColumns:
     - jsonPath: .status.conditions[?(@.type=='Ready')].status
@@ -30,7 +30,12 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: Scheduler is the Schema for the schedulers API.
+        description: |-
+          Scheduler installs a sched_ext scheduler on the nodes it targets.
+
+          It is cluster-scoped because it changes node-level kernel behavior, and a node
+          runs at most one scheduler. Several Schedulers may exist at once as long as
+          their node selections do not overlap.
         properties:
           apiVersion:
             description: |-

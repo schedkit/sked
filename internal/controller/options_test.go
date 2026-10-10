@@ -52,7 +52,7 @@ func TestReconcileOptionsKeepsOverrides(t *testing.T) {
 func TestReconcileOptionsRateLimiter(t *testing.T) {
 	options := ReconcileOptions{}.withDefaults()
 	limiter := options.rateLimiter()
-	request := reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "scheduler"}}
+	request := reconcile.Request{NamespacedName: types.NamespacedName{Name: "scheduler"}}
 
 	first := limiter.When(request)
 	require.Equal(t, options.RetryBaseDelay, first)
@@ -72,7 +72,7 @@ func TestReconcileOptionsRateLimiterHonoursMaxDelay(t *testing.T) {
 		RetryMaxDelay:  4 * time.Second,
 	}.withDefaults()
 	limiter := options.rateLimiter()
-	request := reconcile.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "scheduler"}}
+	request := reconcile.Request{NamespacedName: types.NamespacedName{Name: "scheduler"}}
 
 	for range 8 {
 		limiter.When(request)

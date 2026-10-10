@@ -64,6 +64,7 @@ func main() {
 	var trustPolicyConfigMap string
 	var trustPolicyNamespace string
 	var trustPolicyKey string
+	var workloadNamespace string
 	var reconcileTimeout time.Duration
 	var maxConcurrentReconciles int
 	var reconcileRateLimitQPS float64
@@ -87,6 +88,8 @@ func main() {
 		"Namespace of the scheduler image trust policy ConfigMap. Defaults to the manager namespace.")
 	flag.StringVar(&trustPolicyKey, "trust-policy-configmap-key", trust.DefaultConfigMapKey,
 		"Key inside the trust policy ConfigMap that carries the policy document.")
+	flag.StringVar(&workloadNamespace, "workload-namespace", os.Getenv("POD_NAMESPACE"),
+		"Namespace in which scheduler DaemonSets are created. Defaults to the manager namespace.")
 	flag.DurationVar(&reconcileTimeout, "reconcile-timeout", controller.DefaultReconcileTimeout,
 		"Maximum duration of a single reconcile, bounding image verification and API calls.")
 	flag.IntVar(&maxConcurrentReconciles, "max-concurrent-reconciles", controller.DefaultMaxConcurrentReconciles,
@@ -205,6 +208,7 @@ func main() {
 			RetryBaseDelay: reconcileRetryBaseDelay,
 			RetryMaxDelay:  reconcileRetryMaxDelay,
 		},
+		WorkloadNamespace: workloadNamespace,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Scheduler")
 		os.Exit(1)

@@ -112,12 +112,12 @@ func TestSchedulerReconcilePinsImage(t *testing.T) {
 	const image = "ghcr.io/schedkit/scx_rusty:latest"
 	const pinned = "ghcr.io/schedkit/scx_rusty@sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
-	namespacedName := types.NamespacedName{Name: resourceName, Namespace: "default"}
+	schedulerKey := types.NamespacedName{Name: resourceName}
+	workloadKey := types.NamespacedName{Name: resourceName, Namespace: "default"}
 
 	resource := &skedv1.Scheduler{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      resourceName,
-			Namespace: "default",
+			Name: resourceName,
 		},
 		Spec: skedv1.SchedulerSpec{
 			Sched: image,
@@ -136,16 +136,16 @@ func TestSchedulerReconcilePinsImage(t *testing.T) {
 		Verifier: verifier,
 	}
 
-	_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
+	_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: schedulerKey})
 	require.NoError(t, err)
 
 	var ds appsv1.DaemonSet
-	require.NoError(t, k8sClient.Get(ctx, namespacedName, &ds))
+	require.NoError(t, k8sClient.Get(ctx, workloadKey, &ds))
 	require.Equal(t, pinned, ds.Spec.Template.Spec.Containers[0].Image)
 	require.Equal(t, []string{image}, verifier.calls)
 
 	var updated skedv1.Scheduler
-	require.NoError(t, k8sClient.Get(ctx, namespacedName, &updated))
+	require.NoError(t, k8sClient.Get(ctx, schedulerKey, &updated))
 	require.Equal(t, pinned, updated.Status.ResolvedImage)
 	require.Equal(t, updated.Generation, updated.Status.ObservedGeneration)
 }
@@ -157,10 +157,11 @@ func TestSchedulerReconcilePopulatesStatus(t *testing.T) {
 	const image = "ghcr.io/schedkit/scx_rusty:latest"
 	const pinned = "ghcr.io/schedkit/scx_rusty@sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
-	namespacedName := types.NamespacedName{Name: resourceName, Namespace: "default"}
+	schedulerKey := types.NamespacedName{Name: resourceName}
+	workloadKey := types.NamespacedName{Name: resourceName, Namespace: "default"}
 
 	resource := &skedv1.Scheduler{
-		ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: resourceName},
 		Spec:       skedv1.SchedulerSpec{Sched: image},
 	}
 	require.NoError(t, k8sClient.Create(ctx, resource))
@@ -173,11 +174,11 @@ func TestSchedulerReconcilePopulatesStatus(t *testing.T) {
 		Verifier: &fakeVerifier{resolved: pinned},
 	}
 
-	_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
+	_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: schedulerKey})
 	require.NoError(t, err)
 
 	var updated skedv1.Scheduler
-	require.NoError(t, k8sClient.Get(ctx, namespacedName, &updated))
+	require.NoError(t, k8sClient.Get(ctx, schedulerKey, &updated))
 	require.Equal(t, updated.Generation, updated.Status.ObservedGeneration)
 	require.Equal(t, pinned, updated.Status.ResolvedImage)
 
@@ -187,7 +188,7 @@ func TestSchedulerReconcilePopulatesStatus(t *testing.T) {
 	require.Equal(t, skedv1.ReasonNoNodesScheduled, ready.Reason)
 
 	var ds appsv1.DaemonSet
-	require.NoError(t, k8sClient.Get(ctx, namespacedName, &ds))
+	require.NoError(t, k8sClient.Get(ctx, workloadKey, &ds))
 	ds.Status = appsv1.DaemonSetStatus{
 		CurrentNumberScheduled: 2,
 		DesiredNumberScheduled: 2,
@@ -198,10 +199,10 @@ func TestSchedulerReconcilePopulatesStatus(t *testing.T) {
 	}
 	require.NoError(t, k8sClient.Status().Update(ctx, &ds))
 
-	_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
+	_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: schedulerKey})
 	require.NoError(t, err)
 
-	require.NoError(t, k8sClient.Get(ctx, namespacedName, &updated))
+	require.NoError(t, k8sClient.Get(ctx, schedulerKey, &updated))
 	require.Equal(t, skedv1.SchedulerNodeStatus{Desired: 2, Ready: 2, Available: 2}, updated.Status.Nodes)
 	ready = conditionFor(t, &updated, skedv1.SchedulerConditionReady)
 	require.Equal(t, metav1.ConditionTrue, ready.Status)
@@ -215,10 +216,10 @@ func TestSchedulerReconcileReportsVerificationFailure(t *testing.T) {
 	const resourceName = "unverified-resource"
 	const image = "ghcr.io/schedkit/scx_rusty:latest"
 
-	namespacedName := types.NamespacedName{Name: resourceName, Namespace: "default"}
+	namespacedName := types.NamespacedName{Name: resourceName}
 
 	resource := &skedv1.Scheduler{
-		ObjectMeta: metav1.ObjectMeta{Name: resourceName, Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: resourceName},
 		Spec:       skedv1.SchedulerSpec{Sched: image},
 	}
 	require.NoError(t, k8sClient.Create(ctx, resource))
@@ -250,7 +251,7 @@ func TestSchedulerReconcileReportsVerificationFailure(t *testing.T) {
 
 func schedulerFor(name string, spec skedv1.SchedulerSpec) *skedv1.Scheduler {
 	return &skedv1.Scheduler{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec:       spec,
 	}
 }
@@ -308,12 +309,12 @@ func TestSchedulerReconcileEnforcesOneSchedulerPerNode(t *testing.T) {
 	}
 
 	for _, name := range []string{first.Name, second.Name} {
-		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: name, Namespace: "default"}})
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: name}})
 		require.NoError(t, err)
 	}
 
 	var firstUpdated skedv1.Scheduler
-	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: first.Name, Namespace: "default"}, &firstUpdated))
+	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: first.Name}, &firstUpdated))
 	require.Equal(t, metav1.ConditionTrue, conditionFor(t, &firstUpdated, skedv1.SchedulerConditionActive).Status)
 	require.Equal(t, pinned, firstUpdated.Status.ResolvedImage)
 
@@ -322,13 +323,13 @@ func TestSchedulerReconcileEnforcesOneSchedulerPerNode(t *testing.T) {
 	require.Nil(t, firstDS.Spec.Template.Spec.Affinity)
 
 	var secondUpdated skedv1.Scheduler
-	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: second.Name, Namespace: "default"}, &secondUpdated))
+	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: second.Name}, &secondUpdated))
 
 	activeCondition := conditionFor(t, &secondUpdated, skedv1.SchedulerConditionActive)
 	require.Equal(t, metav1.ConditionFalse, activeCondition.Status)
 	require.Equal(t, skedv1.ReasonSchedulerConflict, activeCondition.Reason)
 	require.Contains(t, activeCondition.Message, "shared-node")
-	require.Contains(t, activeCondition.Message, "default/first-scheduler")
+	require.Contains(t, activeCondition.Message, "first-scheduler")
 	require.Equal(t, metav1.ConditionFalse, conditionFor(t, &secondUpdated, skedv1.SchedulerConditionReady).Status)
 	require.Equal(t, metav1.ConditionTrue, conditionFor(t, &secondUpdated, skedv1.SchedulerConditionDegraded).Status)
 	require.Empty(t, secondUpdated.Status.ResolvedImage)
@@ -364,13 +365,13 @@ func TestSchedulerReconcileAllowsDisjointSchedulers(t *testing.T) {
 	}
 
 	for _, name := range []string{first.Name, second.Name} {
-		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: name, Namespace: "default"}})
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: name}})
 		require.NoError(t, err)
 	}
 
 	for _, name := range []string{first.Name, second.Name} {
 		var updated skedv1.Scheduler
-		require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: name, Namespace: "default"}, &updated))
+		require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: name}, &updated))
 		require.Equal(t, metav1.ConditionTrue, conditionFor(t, &updated, skedv1.SchedulerConditionActive).Status)
 
 		var ds appsv1.DaemonSet
@@ -404,18 +405,18 @@ func TestSchedulerReconcileExcludesContestedNodes(t *testing.T) {
 	}
 
 	for _, name := range []string{first.Name, second.Name} {
-		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: name, Namespace: "default"}})
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: name}})
 		require.NoError(t, err)
 	}
 
 	var secondUpdated skedv1.Scheduler
-	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: second.Name, Namespace: "default"}, &secondUpdated))
+	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: second.Name}, &secondUpdated))
 	require.Equal(t, metav1.ConditionTrue, conditionFor(t, &secondUpdated, skedv1.SchedulerConditionActive).Status)
 	degraded := conditionFor(t, &secondUpdated, skedv1.SchedulerConditionDegraded)
 	require.Equal(t, metav1.ConditionTrue, degraded.Status)
 	require.Equal(t, skedv1.ReasonSchedulerConflict, degraded.Reason)
 	require.Contains(t, degraded.Message, "contested-node")
-	require.Contains(t, degraded.Message, "default/first-scheduler")
+	require.Contains(t, degraded.Message, "first-scheduler")
 	require.Equal(t, pinned, secondUpdated.Status.ResolvedImage)
 
 	var secondDS appsv1.DaemonSet
@@ -448,21 +449,21 @@ func TestSchedulerReconcileFailsOverWhenWinningSchedulerIsDeleted(t *testing.T) 
 	}
 
 	for _, name := range []string{first.Name, second.Name} {
-		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: name, Namespace: "default"}})
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: name}})
 		require.NoError(t, err)
 	}
 
 	var firstUpdated skedv1.Scheduler
-	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: first.Name, Namespace: "default"}, &firstUpdated))
+	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: first.Name}, &firstUpdated))
 	require.Equal(t, metav1.ConditionTrue, conditionFor(t, &firstUpdated, skedv1.SchedulerConditionActive).Status)
 
 	require.NoError(t, k8sClient.Delete(ctx, first))
 
-	_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: second.Name, Namespace: "default"}})
+	_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: second.Name}})
 	require.NoError(t, err)
 
 	var secondUpdated skedv1.Scheduler
-	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: second.Name, Namespace: "default"}, &secondUpdated))
+	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: second.Name}, &secondUpdated))
 	require.Equal(t, metav1.ConditionTrue, conditionFor(t, &secondUpdated, skedv1.SchedulerConditionActive).Status)
 	require.Equal(t, pinned, secondUpdated.Status.ResolvedImage)
 
@@ -524,7 +525,7 @@ func TestSchedulerReconcileSkipsLoggingMissingScheduler(t *testing.T) {
 	r := &SchedulerReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
 
 	_, err := r.Reconcile(ctx, reconcile.Request{
-		NamespacedName: types.NamespacedName{Name: "missing-scheduler", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "missing-scheduler"},
 	})
 	require.NoError(t, err)
 	require.NotContains(t, logs.String(), "unable to fetch Scheduler")
@@ -533,13 +534,13 @@ func TestSchedulerReconcileSkipsLoggingMissingScheduler(t *testing.T) {
 func TestReleaseDaemonSet(t *testing.T) {
 	ctx, k8sClient := newTestEnv(t)
 
-	namespacedName := types.NamespacedName{Name: "released-scheduler", Namespace: "default"}
+	workloadKey := types.NamespacedName{Name: "released-scheduler", Namespace: "default"}
 	ds := &appsv1.DaemonSet{
-		ObjectMeta: metav1.ObjectMeta{Name: namespacedName.Name, Namespace: namespacedName.Namespace},
+		ObjectMeta: metav1.ObjectMeta{Name: workloadKey.Name, Namespace: workloadKey.Namespace},
 		Spec: appsv1.DaemonSetSpec{
-			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": namespacedName.Name}},
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"name": workloadKey.Name}},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"name": namespacedName.Name}},
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"name": workloadKey.Name}},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{Name: "scx", Image: "example.com/scx:latest"}},
 				},
@@ -552,12 +553,12 @@ func TestReleaseDaemonSet(t *testing.T) {
 	r := &SchedulerReconciler{Client: k8sClient}
 
 	require.NoError(t, r.releaseDaemonSet(ctx, &skedv1.Scheduler{ObjectMeta: metav1.ObjectMeta{
-		Name: namespacedName.Name, Namespace: namespacedName.Namespace,
+		Name: workloadKey.Name,
 	}}))
 
 	var got appsv1.DaemonSet
-	require.Error(t, k8sClient.Get(ctx, namespacedName, &got))
+	require.Error(t, k8sClient.Get(ctx, workloadKey, &got))
 	require.NoError(t, r.releaseDaemonSet(ctx, &skedv1.Scheduler{ObjectMeta: metav1.ObjectMeta{
-		Name: namespacedName.Name, Namespace: namespacedName.Namespace,
+		Name: workloadKey.Name,
 	}}))
 }

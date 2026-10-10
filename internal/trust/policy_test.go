@@ -32,7 +32,6 @@ func TestDefaultPolicy(t *testing.T) {
 	require.True(t, p.AllowsImage("ghcr.io/schedkit/scx_rusty:latest"))
 	require.True(t, p.AllowsImage("ghcr.io/schedkit/scx_rusty@"+testDigest))
 	require.False(t, p.AllowsImage("docker.io/library/nginx:latest"))
-	require.True(t, p.AllowsNamespace("anything"))
 	require.True(t, p.AllowsIdentity(authenticationv1.UserInfo{Username: "alice"}))
 }
 
@@ -44,14 +43,6 @@ func TestAllowsImage(t *testing.T) {
 	require.False(t, p.AllowsImage("ghcr.io/other/scx_rusty:latest"))
 	require.False(t, p.AllowsImage("ghcr.io/schedkit/nested/scx_rusty:latest"))
 	require.False(t, p.AllowsImage("not a reference"))
-}
-
-func TestAllowsNamespace(t *testing.T) {
-	require.True(t, (&Policy{}).AllowsNamespace("default"))
-
-	p := &Policy{AllowedNamespaces: []string{"sked-system", "schedulers"}}
-	require.True(t, p.AllowsNamespace("schedulers"))
-	require.False(t, p.AllowsNamespace("default"))
 }
 
 func TestAllowsIdentity(t *testing.T) {
@@ -79,11 +70,11 @@ func TestParsePolicy(t *testing.T) {
 	})
 
 	t.Run("omitted fields inherit defaults", func(t *testing.T) {
-		p, err := ParsePolicy([]byte("allowedNamespaces:\n- schedulers\n"))
+		p, err := ParsePolicy([]byte("allowedImages:\n- ghcr.io/schedkit/scx_rusty\n"))
 		require.NoError(t, err)
-		require.Equal(t, defaultAllowedImages, p.AllowedImages)
+		require.Equal(t, []string{"ghcr.io/schedkit/scx_rusty"}, p.AllowedImages)
 		require.True(t, p.SignatureVerificationEnabled())
-		require.Equal(t, []string{"schedulers"}, p.AllowedNamespaces)
+		require.Equal(t, DefaultSigstoreIdentity, p.Cosign.Identity)
 	})
 
 	t.Run("verification can be disabled explicitly", func(t *testing.T) {

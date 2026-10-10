@@ -201,10 +201,9 @@ func applyScheduler(t *testing.T, name, image string) {
 kind: Scheduler
 metadata:
   name: %s
-  namespace: %s
 spec:
   sched: %s
-`, name, namespace, image)
+`, name, image)
 
 	cmd := exec.Command("kubectl", "apply", "-f", "-")
 	cmd.Stdin = strings.NewReader(manifest)
@@ -215,7 +214,7 @@ spec:
 func deleteScheduler(t *testing.T, name string) {
 	t.Helper()
 
-	cmd := exec.Command("kubectl", "delete", "scheduler", name, "-n", namespace, "--ignore-not-found")
+	cmd := exec.Command("kubectl", "delete", "scheduler", name, "--ignore-not-found")
 	_, err := utils.Run(cmd)
 	require.NoError(t, err, "Failed to delete Scheduler %s", name)
 }
@@ -256,7 +255,7 @@ func waitForSchedulerResolvedImage(t *testing.T, name string) string {
 
 	var resolved string
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		cmd := exec.Command("kubectl", "get", "scheduler", name, "-n", namespace,
+		cmd := exec.Command("kubectl", "get", "scheduler", name,
 			"-o", "jsonpath={.status.resolvedImage}")
 		output, err := utils.Run(cmd)
 		if !assert.NoError(c, err) {
@@ -275,7 +274,7 @@ func waitForSchedulerResolvedImageChange(t *testing.T, name, previous string) st
 
 	var resolved string
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		cmd := exec.Command("kubectl", "get", "scheduler", name, "-n", namespace,
+		cmd := exec.Command("kubectl", "get", "scheduler", name,
 			"-o", "jsonpath={.status.resolvedImage}")
 		output, err := utils.Run(cmd)
 		if !assert.NoError(c, err) {
@@ -307,7 +306,7 @@ func waitForSchedulerConditions(t *testing.T, name string) {
 	t.Helper()
 
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		cmd := exec.Command("kubectl", "get", "scheduler", name, "-n", namespace,
+		cmd := exec.Command("kubectl", "get", "scheduler", name,
 			"-o", "jsonpath={.metadata.generation}|{.status.observedGeneration}|"+
 				"{.status.conditions[?(@.type=='Ready')].status}|"+
 				"{.status.conditions[?(@.type=='Ready')].reason}")

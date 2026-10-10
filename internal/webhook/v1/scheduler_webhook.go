@@ -55,23 +55,14 @@ func (v *SchedulerValidator) ValidateDelete(context.Context, *skedv1.Scheduler) 
 }
 
 func (v *SchedulerValidator) validate(ctx context.Context, scx *skedv1.Scheduler) error {
-	var (
-		userInfo  authenticationv1.UserInfo
-		namespace = scx.Namespace
-	)
+	var userInfo authenticationv1.UserInfo
 	if req, err := admission.RequestFromContext(ctx); err == nil {
 		userInfo = req.UserInfo
-		if req.Namespace != "" {
-			namespace = req.Namespace
-		}
 	}
 
 	policy := v.Policy.Get()
 	if !policy.AllowsIdentity(userInfo) {
 		return fmt.Errorf("identity %q is not allowed to manage Scheduler objects", userInfo.Username)
-	}
-	if !policy.AllowsNamespace(namespace) {
-		return fmt.Errorf("namespace %q is not allowed to host Scheduler objects", namespace)
 	}
 
 	if err := validateSpec(scx); err != nil {

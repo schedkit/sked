@@ -103,14 +103,19 @@ type SchedulerStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
+// Scheduler installs a sched_ext scheduler on the nodes it targets.
+//
+// It is cluster-scoped because it changes node-level kernel behavior, and a node
+// runs at most one scheduler. Several Schedulers may exist at once as long as
+// their node selections do not overlap.
+//
 // +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Cluster
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 // +kubebuilder:printcolumn:name="Desired",type="integer",JSONPath=".status.nodes.desired"
 // +kubebuilder:printcolumn:name="Available",type="integer",JSONPath=".status.nodes.available"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
-
-// Scheduler is the Schema for the schedulers API.
 type Scheduler struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
