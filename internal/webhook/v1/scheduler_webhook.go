@@ -33,6 +33,8 @@ import (
 
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch
 
+// +kubebuilder:webhook:path=/validate-sked-schedkit-io-v1-scheduler,mutating=false,failurePolicy=fail,sideEffects=None,groups=sked.schedkit.io,resources=schedulers,verbs=create;update,versions=v1,name=vscheduler-v1.kb.io,admissionReviewVersions=v1
+
 type SchedulerValidator struct {
 	Policy   trust.PolicyProvider
 	Verifier trust.Verifier

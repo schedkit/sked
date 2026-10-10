@@ -18,66 +18,119 @@ package controller
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
-func TestManagerClusterRoleGrantsDaemonSetAccess(t *testing.T) {
+type rbacManifest struct {
+	Kind     string `json:"kind"`
+	Metadata struct {
+		Name      string `json:"name"`
+		Namespace string `json:"namespace"`
+	} `json:"metadata"`
+	Rules []rbacRule `json:"rules"`
+}
+
+type rbacRule struct {
+	APIGroups       []string `json:"apiGroups"`
+	Resources       []string `json:"resources"`
+	Verbs           []string `json:"verbs"`
+	NonResourceURLs []string `json:"nonResourceURLs"`
+}
+
+func readRBACManifests(t *testing.T) []rbacManifest {
+	t.Helper()
+
 	roleFile := filepath.Join(projectRoot(t), "config", "rbac", "role.yaml")
-
 	data, err := os.ReadFile(roleFile)
-	if err != nil {
-		t.Fatalf("reading generated ClusterRole %q: %v", roleFile, err)
-	}
+	require.NoError(t, err)
 
-	var role struct {
-		Rules []struct {
-			APIGroups []string `json:"apiGroups"`
-			Resources []string `json:"resources"`
-			Verbs     []string `json:"verbs"`
-		} `json:"rules"`
-	}
-	if err := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(data), 4096).Decode(&role); err != nil {
-		t.Fatalf("decoding generated ClusterRole %q: %v", roleFile, err)
-	}
-
-	wantVerbs := []string{"get", "list", "watch", "create", "update", "patch", "delete"}
-
-	for _, rule := range role.Rules {
-		if !slices.Contains(rule.APIGroups, "apps") || !slices.Contains(rule.Resources, "daemonsets") {
+	decoder := yaml.NewYAMLOrJSONDecoder(bytes.NewReader(data), 4096)
+	var manifests []rbacManifest
+	for {
+		var manifest rbacManifest
+		err := decoder.Decode(&manifest)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		if manifest.Kind == "" {
 			continue
 		}
-		for _, verb := range wantVerbs {
-			if !slices.Contains(rule.Verbs, verb) {
-				t.Fatalf("ClusterRole rule for apps/daemonsets is missing verb %q; got %v", verb, rule.Verbs)
-			}
+		manifests = append(manifests, manifest)
+	}
+	require.NotEmpty(t, manifests)
+	return manifests
+}
+
+func findRBACManifest(t *testing.T, manifests []rbacManifest, kind, name string) rbacManifest {
+	t.Helper()
+
+	for _, manifest := range manifests {
+		if manifest.Kind == kind && manifest.Metadata.Name == name {
+			return manifest
+		}
+	}
+	t.Fatalf("generated RBAC does not define %s/%s; re-run `make manifests` after changing the RBAC markers", kind, name)
+	return rbacManifest{}
+}
+
+func requireRBACRule(t *testing.T, manifest rbacManifest, apiGroup, resource string, verbs []string) {
+	t.Helper()
+
+	for _, rule := range manifest.Rules {
+		if !slices.Contains(rule.APIGroups, apiGroup) || !slices.Contains(rule.Resources, resource) {
+			continue
+		}
+		for _, verb := range verbs {
+			require.Contains(t, rule.Verbs, verb, "%s/%s is missing verb %q", manifest.Metadata.Name, resource, verb)
 		}
 		return
 	}
+	t.Fatalf("%s does not grant access to %s/%s; re-run `make manifests`", manifest.Metadata.Name, apiGroup, resource)
+}
 
-	t.Fatalf("generated ClusterRole does not grant access to apps/daemonsets; " +
-		"re-run `make manifests` after changing the controller RBAC markers")
+func TestGeneratedRBACManifests(t *testing.T) {
+	manifests := readRBACManifests(t)
+
+	manager := findRBACManifest(t, manifests, "ClusterRole", "manager-role")
+	requireRBACRule(t, manager, "apps", "daemonsets", []string{"get", "list", "watch", "create", "update", "patch", "delete"})
+	requireRBACRule(t, manager, "", "nodes", []string{"get", "list", "watch"})
+	requireRBACRule(t, manager, "", "configmaps", []string{"get", "list", "watch"})
+
+	leaderElection := findRBACManifest(t, manifests, "Role", "leader-election-role")
+	require.Equal(t, "system", leaderElection.Metadata.Namespace)
+	requireRBACRule(t, leaderElection, "coordination.k8s.io", "leases", []string{"get", "list", "watch", "create", "update", "patch", "delete"})
+	requireRBACRule(t, leaderElection, "", "configmaps", []string{"get", "list", "watch", "create", "update", "patch", "delete"})
+	requireRBACRule(t, leaderElection, "", "events", []string{"create", "patch"})
+
+	metricsAuth := findRBACManifest(t, manifests, "ClusterRole", "metrics-auth-role")
+	requireRBACRule(t, metricsAuth, "authentication.k8s.io", "tokenreviews", []string{"create"})
+	requireRBACRule(t, metricsAuth, "authorization.k8s.io", "subjectaccessreviews", []string{"create"})
+
+	metricsReader := findRBACManifest(t, manifests, "ClusterRole", "metrics-reader")
+	require.Len(t, metricsReader.Rules, 1)
+	require.Equal(t, []string{"/metrics"}, metricsReader.Rules[0].NonResourceURLs)
 }
 
 func projectRoot(t *testing.T) string {
 	t.Helper()
 
 	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("determining working directory: %v", err)
-	}
+	require.NoError(t, err)
 	for {
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
 			return dir
 		}
 		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatalf("could not locate project root (go.mod) from %q", dir)
-		}
+		require.NotEqual(t, parent, dir, "could not locate project root (go.mod) from %q", dir)
 		dir = parent
 	}
 }
