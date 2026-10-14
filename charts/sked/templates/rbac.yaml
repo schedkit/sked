@@ -1,0 +1,81 @@
+{{- if .Values.rbac.create }}
+{{- range $name, $role := (.Files.Get "files/rbac.yaml" | fromYaml) }}
+{{- if or (not (hasPrefix "metrics-" $name)) (and $.Values.metrics.enabled $.Values.metrics.secure) }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: {{ $role.kind }}
+metadata:
+  name: {{ include "sked.fullname" $ }}-{{ $name }}
+  {{- if eq $role.kind "Role" }}
+  namespace: {{ $.Release.Namespace }}
+  {{- end }}
+  labels:
+    {{- include "sked.labels" $ | nindent 4 }}
+rules:
+  {{- toYaml $role.rules | nindent 2 }}
+{{- end }}
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "sked.fullname" . }}-manager-rolebinding
+  labels:
+    {{- include "sked.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "sked.fullname" . }}-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "sked.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "sked.fullname" . }}-leader-election-binding
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sked.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "sked.fullname" . }}-leader-election-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "sked.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- if and .Values.metrics.enabled .Values.metrics.secure }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "sked.fullname" . }}-metrics-auth-binding
+  labels:
+    {{- include "sked.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "sked.fullname" . }}-metrics-auth-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "sked.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- with .Values.metrics.readerSubjects }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "sked.fullname" $ }}-metrics-reader-binding
+  labels:
+    {{- include "sked.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "sked.fullname" $ }}-metrics-reader
+subjects:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+{{- end }}

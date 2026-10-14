@@ -1,0 +1,118 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sked.fullname" . }}-controller-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sked.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "sked.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "sked.selectorLabels" . | nindent 8 }}
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+        {{- if not .Values.trustPolicy.existingConfigMap }}
+        checksum/trust-policy: {{ include "sked.trustPolicy" . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "sked.serviceAccountName" . }}
+      terminationGracePeriodSeconds: 10
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: manager
+          image: {{ include "sked.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /manager
+          args:
+            - --leader-elect={{ .Values.controller.leaderElection }}
+            - --health-probe-bind-address=:8081
+            - --metrics-bind-address={{ ternary (printf ":%v" .Values.metrics.port) "0" .Values.metrics.enabled }}
+            - --metrics-secure={{ .Values.metrics.secure }}
+            - --enable-http2={{ .Values.controller.enableHTTP2 }}
+            - --trust-policy-configmap={{ include "sked.trustPolicyName" . }}
+            - --trust-policy-namespace={{ default .Release.Namespace .Values.trustPolicy.namespace }}
+            - --trust-policy-configmap-key={{ .Values.trustPolicy.key }}
+            - --workload-namespace={{ default .Release.Namespace .Values.controller.workloadNamespace }}
+            - --reconcile-timeout={{ .Values.controller.reconcileTimeout }}
+            - --max-concurrent-reconciles={{ .Values.controller.maxConcurrentReconciles }}
+            - --reconcile-rate-limit-qps={{ .Values.controller.reconcileRateLimitQPS }}
+            - --reconcile-rate-limit-burst={{ .Values.controller.reconcileRateLimitBurst }}
+            - --reconcile-retry-base-delay={{ .Values.controller.reconcileRetryBaseDelay }}
+            - --reconcile-retry-max-delay={{ .Values.controller.reconcileRetryMaxDelay }}
+            {{- with .Values.controller.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: webhook-server
+              containerPort: 9443
+              protocol: TCP
+            {{- if .Values.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+              protocol: TCP
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: cert
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: cert
+          secret:
+            secretName: {{ include "sked.webhookSecretName" . }}
+            defaultMode: 420
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

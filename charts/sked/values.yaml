@@ -1,0 +1,87 @@
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: ghcr.io/schedkit/sked
+  tag: ""
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+replicaCount: 1
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+rbac:
+  create: true
+
+controller:
+  leaderElection: true
+  workloadNamespace: ""
+  enableHTTP2: false
+  reconcileTimeout: 1m
+  maxConcurrentReconciles: 2
+  reconcileRateLimitQPS: 5
+  reconcileRateLimitBurst: 10
+  reconcileRetryBaseDelay: 1s
+  reconcileRetryMaxDelay: 5m
+  extraArgs: []
+
+trustPolicy:
+  existingConfigMap: ""
+  namespace: ""
+  key: policy.yaml
+  policy: null
+
+webhook:
+  certManager:
+    enabled: true
+    issuerRef: {}
+  secretName: ""
+  caBundle: ""
+
+metrics:
+  enabled: true
+  secure: true
+  port: 8443
+  serviceMonitor:
+    enabled: false
+    labels: {}
+    interval: 30s
+    scrapeTimeout: 10s
+    tlsConfig:
+      insecureSkipVerify: true
+  readerSubjects: []
+
+networkPolicy:
+  enabled: false
+  metricsNamespaceSelector:
+    matchLabels:
+      metrics: enabled
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+extraEnv: []
+extraVolumes: []
+extraVolumeMounts: []

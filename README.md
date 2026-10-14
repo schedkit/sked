@@ -2,6 +2,20 @@
 
 Sked manages OCI-packaged sched_ext schedulers on Kubernetes nodes.
 
+## Install with Helm
+
+With cert-manager installed, run from a checkout of this repository:
+
+```sh
+helm install sked ./charts/sked \
+  --namespace sked-system --create-namespace \
+  --wait --timeout 5m
+```
+
+The [chart README](charts/sked/README.md) covers configuration, upgrades, and
+uninstalling. Helm does not upgrade CRDs automatically; apply the CRDs from the
+new chart before upgrading the release.
+
 ## Container images
 
 Images live at `ghcr.io/schedkit/sked` and support Linux on AMD64 and ARM64.

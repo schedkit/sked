@@ -1,0 +1,144 @@
+leader-election-role:
+  kind: Role
+  rules:
+  - apiGroups:
+    - ""
+    resources:
+    - configmaps
+    verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+  - apiGroups:
+    - ""
+    resources:
+    - events
+    verbs:
+    - create
+    - patch
+  - apiGroups:
+    - coordination.k8s.io
+    resources:
+    - leases
+    verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+manager-role:
+  kind: ClusterRole
+  rules:
+  - apiGroups:
+    - ""
+    resources:
+    - configmaps
+    - nodes
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - apps
+    resources:
+    - daemonsets
+    verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+  - apiGroups:
+    - sked.schedkit.io
+    resources:
+    - schedulers
+    verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+  - apiGroups:
+    - sked.schedkit.io
+    resources:
+    - schedulers/finalizers
+    verbs:
+    - update
+  - apiGroups:
+    - sked.schedkit.io
+    resources:
+    - schedulers/status
+    verbs:
+    - get
+    - patch
+    - update
+metrics-auth-role:
+  kind: ClusterRole
+  rules:
+  - apiGroups:
+    - authentication.k8s.io
+    resources:
+    - tokenreviews
+    verbs:
+    - create
+  - apiGroups:
+    - authorization.k8s.io
+    resources:
+    - subjectaccessreviews
+    verbs:
+    - create
+metrics-reader:
+  kind: ClusterRole
+  rules:
+  - nonResourceURLs:
+    - /metrics
+    verbs:
+    - get
+scheduler-editor-role:
+  kind: ClusterRole
+  rules:
+  - apiGroups:
+    - sked.schedkit.io
+    resources:
+    - schedulers
+    verbs:
+    - create
+    - delete
+    - get
+    - list
+    - patch
+    - update
+    - watch
+  - apiGroups:
+    - sked.schedkit.io
+    resources:
+    - schedulers/status
+    verbs:
+    - get
+scheduler-viewer-role:
+  kind: ClusterRole
+  rules:
+  - apiGroups:
+    - sked.schedkit.io
+    resources:
+    - schedulers
+    verbs:
+    - get
+    - list
+    - watch
+  - apiGroups:
+    - sked.schedkit.io
+    resources:
+    - schedulers/status
+    verbs:
+    - get

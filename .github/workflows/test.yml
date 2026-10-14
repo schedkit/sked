@@ -24,3 +24,38 @@ jobs:
         run: |
           go mod tidy
           make test
+
+  helm:
+    name: Helm ${{ matrix.helm }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        helm: ['v3.22.0', 'v4.3.0']
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '~1.26'
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ matrix.helm }}
+
+      - name: Verify generated manifests
+        run: make verify-generated
+
+      - name: Test the chart
+        run: make test-helm
+
+      - name: Install Kind
+        run: go install sigs.k8s.io/kind@v0.33.0
+
+      - name: Test chart installation and upgrades
+        run: make test-helm-e2e

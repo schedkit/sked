@@ -1,0 +1,47 @@
+{{- if .Values.metrics.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "sked.fullname" . }}-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sked.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+spec:
+  ports:
+    - name: {{ ternary "https" "http" .Values.metrics.secure }}
+      port: {{ .Values.metrics.port }}
+      protocol: TCP
+      targetPort: {{ .Values.metrics.port }}
+  selector:
+    {{- include "sked.selectorLabels" . | nindent 4 }}
+{{- if .Values.metrics.serviceMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "sked.fullname" . }}-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sked.labels" . | nindent 4 }}
+    {{- with .Values.metrics.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "sked.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: metrics
+  endpoints:
+    - path: /metrics
+      port: {{ ternary "https" "http" .Values.metrics.secure }}
+      scheme: {{ ternary "https" "http" .Values.metrics.secure }}
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.metrics.serviceMonitor.scrapeTimeout }}
+      {{- if .Values.metrics.secure }}
+      bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      tlsConfig:
+        {{- toYaml .Values.metrics.serviceMonitor.tlsConfig | nindent 8 }}
+      {{- end }}
+{{- end }}
+{{- end }}

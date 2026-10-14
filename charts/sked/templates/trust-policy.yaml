@@ -1,0 +1,12 @@
+{{- if not .Values.trustPolicy.existingConfigMap }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sked.trustPolicyName" . }}
+  namespace: {{ default .Release.Namespace .Values.trustPolicy.namespace }}
+  labels:
+    {{- include "sked.labels" . | nindent 4 }}
+data:
+  {{ .Values.trustPolicy.key }}: |
+    {{- include "sked.trustPolicy" . | nindent 4 }}
+{{- end }}
