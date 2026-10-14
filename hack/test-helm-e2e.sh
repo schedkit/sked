@@ -49,11 +49,7 @@ printf '%s\n' \
   '  name: rejected-image' \
   'spec:' \
   '  sched: registry.example/untrusted:latest' > "$workdir/rejected.yaml"
-if kubectl apply -f "$workdir/rejected.yaml" > "$workdir/admission.log" 2>&1; then
-  printf 'The webhook accepted an untrusted image\n' >&2
-  exit 1
-fi
-grep -q 'denied the request' "$workdir/admission.log"
+bash hack/check-helm-admission.sh "$workdir/rejected.yaml"
 
 "$HELM" uninstall sked --namespace operators --wait --timeout 5m
 kubectl get crd schedulers.sked.schedkit.io
