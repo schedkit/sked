@@ -67,6 +67,23 @@ verify-generated: manifests generate ## Fail when generated manifests or code ar
 		exit 1; \
 	}
 
+.PHONY: helm-sync
+helm-sync: manifests ## Sync the chart's CRDs, RBAC, webhook rules, and trust policy.
+	go run ./hack/helm
+
+.PHONY: verify-helm
+verify-helm: manifests ## Check that generated chart files match the manifests.
+	go run ./hack/helm -check
+
+.PHONY: test-helm
+test-helm: verify-helm kustomize ## Lint and test the Helm chart.
+	$(HELM) lint --strict charts/sked
+	HELM="$(HELM)" KUSTOMIZE="$(KUSTOMIZE)" go test ./test/helm -count=1 -v
+
+.PHONY: test-helm-e2e
+test-helm-e2e: verify-helm ## Test chart installation, upgrades, and removal in a fresh Kind cluster.
+	HELM="$(HELM)" bash hack/test-helm-e2e.sh
+
 .PHONY: test
 test: manifests generate fmt vet envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
@@ -172,6 +189,7 @@ $(LOCALBIN):
 
 ## Tool Binaries
 KUBECTL ?= kubectl
+HELM ?= helm
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
