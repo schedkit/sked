@@ -4,13 +4,19 @@ Sked manages OCI-packaged sched_ext schedulers on Kubernetes nodes.
 
 ## Install with Helm
 
-With cert-manager installed, run from a checkout of this repository:
+With [cert-manager](https://cert-manager.io/docs/installation/) installed:
 
 ```sh
-helm install sked ./charts/sked \
+helm repo add schedkit https://schedkit.github.io/sked
+helm repo update
+helm install sked schedkit/sked \
   --namespace sked-system --create-namespace \
   --wait --timeout 5m
 ```
+
+Use `--version 1.2.3` to select a specific chart release. Chart archives are also
+attached to [GitHub Releases](https://github.com/schedkit/sked/releases).
+For development, replace `schedkit/sked` with `./charts/sked` from a checkout.
 
 The [chart README](charts/sked/README.md) covers configuration, upgrades, and
 uninstalling. Helm does not upgrade CRDs automatically; apply the CRDs from the
@@ -42,13 +48,6 @@ Every push to `main` updates the `main` and `latest` image tags. Pushing a Git t
 publishes a matching image tag: `v1.2.3` becomes `ghcr.io/schedkit/sked:v1.2.3`.
 `latest` follows `main`, not the latest release. Each build also gets a
 `sha-<full-commit-SHA>` tag.
-
-To release, tag the commit you want to ship and push the tag:
-
-```sh
-git tag v1.2.3
-git push origin v1.2.3
-```
 
 [The workflow](.github/workflows/publish-image.yml) uses `GITHUB_TOKEN` to publish;
 there's no extra registry secret to set up. After the first publish, set the GHCR
@@ -113,6 +112,54 @@ deploy using `$ref` rather than the mutable tag.
 
 Copy the complete image index, including its attestations, and its Cosign
 signature. Use the verified digest, not a mutable tag.
+
+## Releases and Helm repository
+
+Tag the commit you want to ship and push the tag:
+
+```sh
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+After the image has been published and signed, the
+[release workflow](.github/workflows/publish-image.yml):
+
+- Packages `charts/sked` as `sked-1.2.3.tgz`, with chart version `1.2.3` and
+  `appVersion: v1.2.3`, so installs use the matching controller image.
+- Creates the GitHub Release if needed and attaches the chart archive. The same
+  archive is available as the workflow's `helm-chart` artifact.
+- Creates or updates `gh-pages` with the archive and `index.yaml`, preserving old
+  versions, then deploys that branch's contents to GitHub Pages.
+
+Chart release tags must be `vMAJOR.MINOR.PATCH` or `MAJOR.MINOR.PATCH`, optionally
+with a SemVer prerelease suffix such as `-rc.1`. Build metadata (`+...`) is not
+supported because it cannot be used unchanged as a container image tag. Other
+tag formats still publish images, but the chart release job rejects them.
+Prereleases are marked on GitHub; Helm users must select them with `--devel` or
+an explicit `--version`. Push each release tag separately.
+
+Release versions are immutable: don't move a published tag or use both `v1.2.3`
+and `1.2.3`. Re-running a release reuses its existing chart asset, and the
+repository publisher refuses to overwrite an archive with different contents.
+Checked-in chart metadata does not need a version bump for the release; packaging
+derives both versions from the tag without changing source files.
+
+### One-time repository setup
+
+1. In **Settings → Pages → Build and deployment**, set **Source** to
+   **GitHub Actions**. No manually created `gh-pages` branch is needed.
+2. If the `github-pages` environment has deployment branch/tag restrictions,
+   allow your release tags.
+3. Ensure repository rules allow `GITHUB_TOKEN` to create and update `gh-pages`
+   and create releases. The workflow requests `contents: write`, `pages: write`,
+   and `id-token: write` only in the jobs that need them. No PAT is required.
+
+The deployment job checks out `gh-pages` and uploads it directly to Pages. Don't
+select Pages' **Deploy from a branch** mode: commits made with `GITHUB_TOKEN`
+don't trigger a branch-based Pages build. The repository becomes available at
+`https://schedkit.github.io/sked` after the first successful tagged release and
+Pages deployment. For a fork, use its Pages URL instead.
 
 ## Scheduler events
 

@@ -2,14 +2,21 @@
 
 ## Install
 
-Install [cert-manager](https://cert-manager.io/docs/installation/) first, then run
-from a checkout of this repository:
+Install [cert-manager](https://cert-manager.io/docs/installation/) first, then run:
 
 ```sh
-helm install sked ./charts/sked \
+helm repo add schedkit https://schedkit.github.io/sked
+helm repo update
+helm install sked schedkit/sked \
   --namespace sked-system --create-namespace \
   --wait --timeout 5m
 ```
+
+Add `--version 1.2.3` to pin a release. Prereleases require an explicit version
+such as `--version 1.2.3-rc.1` or `--devel`. The chart archive is also attached to
+its [GitHub Release](https://github.com/schedkit/sked/releases).
+For development installs from a checkout, use `./charts/sked` instead of
+`schedkit/sked`.
 
 Helm 3 and 4 are supported. Installation needs permission to create CRDs, cluster
 RBAC, and admission webhooks. Nodes running schedulers need sched_ext support.
@@ -215,15 +222,20 @@ Before upgrading from a Zap-based controller, remove legacy logging flags from
 Follow the [logging migration](#migrating-logging-overrides); old flags prevent
 controller startup. When rolling back, restore flags supported by the old binary.
 
-Helm **does not upgrade CRDs**. From the checkout you want to deploy, apply them
-first, then upgrade using your saved values:
+Helm **does not upgrade CRDs**. Choose the chart version you want to deploy,
+apply its CRDs first, then upgrade using your saved values:
 
 ```sh
-kubectl apply -f ./charts/sked/crds/
-helm upgrade sked ./charts/sked \
+version=1.2.3
+helm repo update
+helm show crds schedkit/sked --version "$version" | kubectl apply -f -
+helm upgrade sked schedkit/sked --version "$version" \
   --namespace sked-system -f my-values.yaml \
   --wait --timeout 5m
 ```
+
+For a local checkout, apply `./charts/sked/crds/` and upgrade using
+`./charts/sked` instead.
 
 Don't change the release name, namespace, `nameOverride`, or `fullnameOverride`
 on upgrade; they determine resource names and Deployment selectors.
@@ -261,6 +273,14 @@ on Helm 3 and 4. To test installation, failover, eviction protection, upgrade,
 rollback, and uninstall locally, run `make test-helm-e2e`. It needs Docker and Kind,
 creates a temporary cluster with two workers, and removes it afterward.
 
-Keep `version` and `appVersion` in sync with the controller release (for example,
-`version: 0.2.0` and `appVersion: "v0.2.0"`); do not bump the chart version
-independently. Package the chart with `helm package ./charts/sked --destination /tmp`.
+Tagged releases derive `version` and `appVersion` from the Git tag without
+changing the checked-in `Chart.yaml`. For example, `v1.2.3` produces chart version
+`1.2.3` and `appVersion: "v1.2.3"`. Chart and controller releases share a version;
+do not release chart versions independently. To package a release locally:
+
+```sh
+bash hack/package-helm.sh v1.2.3 /tmp/sked-chart
+```
+
+See [release setup](../../README.md#releases-and-helm-repository) for publication
+to GitHub Releases and the `gh-pages` Helm repository.
