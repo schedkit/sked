@@ -156,8 +156,8 @@ func TestE2E(t *testing.T) {
 					Level   string `json:"level"`
 				}
 				if json.Unmarshal([]byte(line), &entry) == nil &&
-					entry.Logger == "controller-runtime.metrics" && entry.Message == "Serving metrics server" {
-					assert.Equal(c, "info", entry.Level)
+					entry.Logger == "controller-runtime/metrics" && entry.Message == "Serving metrics server" {
+					assert.Equal(c, "INFO", entry.Level)
 					found = true
 				}
 			}

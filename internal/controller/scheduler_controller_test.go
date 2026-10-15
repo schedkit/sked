@@ -20,8 +20,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 
+	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -32,7 +34,6 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	skedv1 "github.com/schedkit/sked/api/v1"
@@ -540,7 +541,7 @@ func TestSchedulerReconcileSkipsLoggingMissingScheduler(t *testing.T) {
 	ctx, k8sClient := newTestEnv(t)
 
 	var logs bytes.Buffer
-	ctx = logf.IntoContext(ctx, zap.New(zap.WriteTo(&logs), zap.UseDevMode(true)))
+	ctx = logf.IntoContext(ctx, logr.FromSlogHandler(slog.NewJSONHandler(&logs, nil)))
 
 	recorder := events.NewFakeRecorder(10)
 	r := &SchedulerReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), Recorder: recorder}
