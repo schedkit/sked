@@ -44,7 +44,9 @@ bash hack/check-manager-ha.sh operators sked-controller-manager app.kubernetes.i
 kubectl apply -f ./charts/sked/crds/
 "$HELM" upgrade sked ./charts/sked --namespace operators \
   --set image.repository=sked-helm-test,image.tag=local,image.pullPolicy=Never \
-  --set replicaCount=3,controller.reconcileTimeout=30s --wait --timeout 5m
+  --set replicaCount=3,controller.reconcileTimeout=30s \
+  --set-string 'controller.extraArgs[0]=--log-format=text,controller.extraArgs[1]=--log-verbosity=2' \
+  --wait --timeout 5m
 kubectl wait -n operators deployment/sked-controller-manager --for=jsonpath='{.status.readyReplicas}'=3 --timeout=2m
 kubectl wait -n operators pdb/sked-controller-manager --for=jsonpath='{.status.disruptionsAllowed}'=2 --timeout=2m
 

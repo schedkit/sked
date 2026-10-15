@@ -2,10 +2,15 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
+	"log/slog"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -35,7 +40,11 @@ func TestSchedulerEventsStored(t *testing.T) {
 	scheme := runtime.NewScheme()
 	require.NoError(t, clientgoscheme.AddToScheme(scheme))
 	require.NoError(t, skedv1.AddToScheme(scheme))
+	logs, err := os.CreateTemp(t.TempDir(), "controller-logs")
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, logs.Close()) })
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+		Logger:                 logr.FromSlogHandler(slog.NewJSONHandler(logs, nil)),
 		Scheme:                 scheme,
 		Metrics:                metricsserver.Options{BindAddress: "0"},
 		HealthProbeBindAddress: "0",
@@ -79,6 +88,28 @@ func TestSchedulerEventsStored(t *testing.T) {
 		assert.Empty(t, event.Regarding.Namespace)
 		assert.Equal(t, "no nodes currently match the scheduler's node selection", event.Note)
 	}, 20*time.Second, 100*time.Millisecond)
+
+	require.EventuallyWithT(t, func(t *assert.CollectT) {
+		output, err := os.ReadFile(logs.Name())
+		if !assert.NoError(t, err) {
+			return
+		}
+		for line := range strings.SplitSeq(string(output), "\n") {
+			var entry map[string]any
+			if json.Unmarshal([]byte(line), &entry) != nil || entry["msg"] != "DaemonSet successfully created or patched" {
+				continue
+			}
+			assert.Equal(t, "INFO", entry["level"])
+			assert.Equal(t, "scheduler", entry["controller"])
+			assert.Equal(t, "sked.schedkit.io", entry["controllerGroup"])
+			assert.Equal(t, "Scheduler", entry["controllerKind"])
+			assert.Equal(t, map[string]any{"name": sc.Name}, entry["Scheduler"])
+			assert.Equal(t, sc.Name, entry["name"])
+			assert.NotEmpty(t, entry["reconcileID"])
+			return
+		}
+		assert.Fail(t, "no successful reconcile log found")
+	}, 10*time.Second, 100*time.Millisecond)
 
 	var legacy corev1.EventList
 	require.NoError(t, k8sClient.List(ctx, &legacy, client.InNamespace(metav1.NamespaceDefault)))

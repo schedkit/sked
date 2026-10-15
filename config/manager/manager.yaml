@@ -49,7 +49,6 @@ spec:
         - /manager
         args:
           - --leader-elect
-          - --zap-devel=false
           - --health-probe-bind-address=:8081
           - --trust-policy-configmap=sked-scheduler-trust-policy
         env:

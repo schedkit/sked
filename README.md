@@ -172,6 +172,107 @@ job, even if tests fail.
 | `--reconcile-rate-limit-burst` | `10` |
 | `--reconcile-retry-base-delay` | `1s` |
 | `--reconcile-retry-max-delay` | `5m` |
+| `--log-format` | `json` |
+| `--log-level` | `info` |
+| `--log-verbosity` | unset |
 
 `--reconcile-timeout` caps a single reconcile. Failed reconciles back off exponentially
 up to `--reconcile-retry-max-delay`.
+
+## Controller logging
+
+The controller uses Go's standard-library `log/slog` backend through Logr. After
+logging initialization, controller-runtime, Slog, and Klog write to the same
+handler on stderr. Helm and Kustomize rely on the binary's JSON/info defaults.
+
+- `--log-format=json|text` selects newline-delimited JSON or human-readable text.
+- `--log-level=info|debug|error` selects a severity threshold. `debug` uses native
+  Slog debug (`-4`), enabling Logr `V(1)` through `V(4)`.
+- `--log-verbosity=N` selects an exact Logr threshold, from `0` to `2147483647`.
+  `0` is info; `2` enables `V(1)` and `V(2)`, but not `V(3)`. Errors remain enabled.
+
+Explicitly setting both `--log-level` and `--log-verbosity` is an error, even if
+`--log-level=info`. An implicit default does not conflict with `--log-verbosity`.
+Format and verbosity are independent; there is no development-mode switch.
+
+For local development:
+
+```sh
+go run ./cmd/main.go --log-format=text --log-level=debug
+```
+
+For a precise verbosity threshold:
+
+```sh
+go run ./cmd/main.go --log-verbosity=2
+```
+
+### JSON fields
+
+| Field | Meaning |
+| --- | --- |
+| `time` | RFC3339 timestamp with fractional precision as emitted by Slog |
+| `level` | Native Slog severity: `INFO`, `ERROR`, `DEBUG`, or intermediate levels |
+| `msg` | Message |
+| `logger` | Optional slash-separated logger name, such as `controller-runtime/metrics` |
+| `err` | Error passed to Logr's `Error`, when non-nil |
+
+Reconcile logs retain controller/resource identity and `reconcileID`. Other values
+remain structured fields. Logr `V(n)` maps to Slog level `-n`: for example, `V(1)`
+is rendered as `DEBUG+3`, `V(2)` as `DEBUG+2`, and `V(4)` as `DEBUG`.
+
+Ordinary errors do not include automatic stack traces. Logs are not sampled;
+repeated errors can produce more output than with the previous production Zap
+configuration. Successful no-op reconciles log at `V(1)` rather than info; actual
+workload creations and changes remain visible at info. Kubernetes events and
+status conditions are unchanged.
+
+Use `log.FromContext(ctx)` in controller code to retain request fields, and log
+Kubernetes objects as explicit references (`klog.KObj` / `klog.KRef`) or selected
+fields. Slog does not reproduce Zap's Kubernetes-aware object truncation: logging
+a whole object can expose its specification, environments, or sensitive data.
+Do not log Secret contents or full trust-policy documents.
+
+Sigstore/Rekor still brings a transitive Zap dependency and independently
+configured loggers. These flags do not control every third-party log stream;
+this migration does not make the binary entirely Zap-free.
+
+### Breaking change: migrating from Zap
+
+**Remove every `--zap-*` argument before upgrading.** Legacy flags are rejected
+and prevent startup; there are no aliases. Update custom Deployments, scripts,
+and Helm `controller.extraArgs`, including saved or reused release values.
+
+An old invocation:
+
+```sh
+go run ./cmd/main.go --zap-devel=true --zap-log-level=debug
+```
+
+To retain its text output and `V(1)` threshold, use:
+
+```sh
+go run ./cmd/main.go --log-format=text --log-verbosity=1
+```
+
+Use `--log-level=debug` instead for the new, more verbose `V(4)` threshold.
+Remove `--zap-devel=false` without replacement to use JSON/info defaults. Replace
+`--zap-encoder=console` with `--log-format=text`. Remove `--zap-stacktrace-level`
+and `--zap-time-encoding`; automatic error stacks and custom timestamp encodings
+are no longer supported.
+
+Update log consumers from `ts` to `time`, `error` to `err`, lowercase to native
+uppercase severity names, and dotted to slash-separated logger names. For example,
+the old metrics filter:
+
+```sh
+jq -c 'select(.logger == "controller-runtime.metrics" and .level == "info")'
+```
+
+becomes:
+
+```sh
+jq -c 'select(.logger == "controller-runtime/metrics" and .level == "INFO")'
+```
+
+See the [Helm logging examples](charts/sked/README.md#logging) for values-file changes.

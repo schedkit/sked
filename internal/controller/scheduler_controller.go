@@ -163,6 +163,9 @@ func (r *SchedulerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 
+	if result == controllerutil.OperationResultNone {
+		logger = logger.V(1)
+	}
 	logger.Info("DaemonSet successfully created or patched", "result", result, "image", image)
 	return ctrl.Result{}, nil
 }

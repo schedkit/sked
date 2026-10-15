@@ -19,6 +19,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
@@ -31,13 +32,13 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	skedv1 "github.com/schedkit/sked/api/v1"
 	"github.com/schedkit/sked/internal/controller"
+	"github.com/schedkit/sked/internal/logging"
 	"github.com/schedkit/sked/internal/trust"
 	webhookv1 "github.com/schedkit/sked/internal/webhook/v1"
 	// +kubebuilder:scaffold:imports
@@ -53,12 +54,6 @@ func init() {
 
 	utilruntime.Must(skedv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
-}
-
-func bindLoggingFlags(fs *flag.FlagSet) *zap.Options {
-	opts := &zap.Options{Development: false}
-	opts.BindFlags(fs)
-	return opts
 }
 
 func main() {
@@ -108,10 +103,13 @@ func main() {
 		"First requeue delay for a failed reconcile, doubling after every failure.")
 	flag.DurationVar(&reconcileRetryMaxDelay, "reconcile-retry-max-delay", controller.DefaultRetryMaxDelay,
 		"Upper bound on the exponential requeue delay for a failed reconcile.")
-	opts := bindLoggingFlags(flag.CommandLine)
+	opts := logging.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(opts)))
+	if err := opts.Install(os.Stderr); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will

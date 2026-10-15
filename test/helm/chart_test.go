@@ -145,8 +145,12 @@ func TestDefaultManifestsMatchKustomize(t *testing.T) {
 	}
 	require.NoError(t, yaml.Unmarshal(chartData, &chart))
 	container := manager(t, expected, "sked")
-	require.Contains(t, container["args"], "--zap-devel=false")
-	require.Contains(t, manager(t, actual, "sked")["args"], "--zap-devel=false")
+	for _, c := range []map[string]any{container, manager(t, actual, "sked")} {
+		for _, arg := range c["args"].([]any) {
+			require.False(t, strings.HasPrefix(arg.(string), "--zap-"))
+			require.False(t, strings.HasPrefix(arg.(string), "--log-"))
+		}
+	}
 	container["image"] = "ghcr.io/schedkit/sked:" + chart.AppVersion
 	container["imagePullPolicy"] = "IfNotPresent"
 	container["ports"] = append(container["ports"].([]any), map[string]any{
@@ -214,8 +218,8 @@ controller:
   reconcileRetryBaseDelay: 2s
   reconcileRetryMaxDelay: 2m
   extraArgs:
-    - --zap-log-level=debug
-    - --zap-encoder=console
+    - --log-level=debug
+    - --log-format=text
 trustPolicy:
   key: custom.yaml
   policy:
@@ -262,7 +266,7 @@ extraVolumeMounts:
 		"--trust-policy-namespace=operators", "--trust-policy-configmap-key=custom.yaml",
 		"--reconcile-timeout=30s", "--max-concurrent-reconciles=4", "--reconcile-rate-limit-qps=2.5",
 		"--reconcile-rate-limit-burst=8", "--reconcile-retry-base-delay=2s", "--reconcile-retry-max-delay=2m",
-		"--zap-log-level=debug", "--zap-encoder=console",
+		"--log-level=debug", "--log-format=text",
 	} {
 		require.Contains(t, container["args"], arg)
 	}
@@ -394,11 +398,18 @@ func TestUpgradeKeepsSelectorsAndReferences(t *testing.T) {
 	}
 }
 
-func TestDevelopmentLoggingOverride(t *testing.T) {
-	docs := render(t, "sked", "operators", "controller:\n  extraArgs: [--zap-devel=true]\n")
-	args := manager(t, docs, "sked")["args"].([]any)
-	require.Contains(t, args, "--zap-devel=false")
-	require.Equal(t, "--zap-devel=true", args[len(args)-1])
+func TestLoggingOverrides(t *testing.T) {
+	for _, overrides := range [][]any{
+		{"--log-format=text", "--log-level=debug"},
+		{"--log-verbosity=2"},
+		{"--log-level=error"},
+	} {
+		values, err := yaml.Marshal(map[string]any{"controller": map[string]any{"extraArgs": overrides}})
+		require.NoError(t, err)
+		docs := render(t, "sked", "operators", string(values))
+		args := manager(t, docs, "sked")["args"].([]any)
+		require.Equal(t, overrides, args[len(args)-len(overrides):])
+	}
 }
 
 func TestInvalidConfiguration(t *testing.T) {

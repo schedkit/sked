@@ -79,6 +79,66 @@ spread constraints to replace the rule. Custom constraints must include a
 `labelSelector` matching the controller pods. `nodeSelector`, `tolerations`, and
 `affinity` can also restrict placement.
 
+### Logging
+
+By default, the controller writes newline-delimited Slog JSON to stderr at info
+level. The chart does not inject logging flags. To use text output and debug
+logging:
+
+```yaml
+controller:
+  extraArgs:
+    - --log-format=text
+    - --log-level=debug
+```
+
+`--log-format` accepts `json` or `text`; `--log-level` accepts `info`, `debug`, or
+`error`. Debug enables Logr `V(1)` through `V(4)`. For a precise threshold, use
+`--log-verbosity=N` instead of `--log-level`, for example:
+
+```yaml
+controller:
+  extraArgs:
+    - --log-verbosity=2
+```
+
+Do not explicitly combine level and verbosity flags; the controller rejects that
+configuration. Verbosity accepts integers from `0` to `2147483647`.
+
+JSON uses `time`, `level`, `msg`, optional `logger`, and `err` for Logr errors.
+Severity names are native Slog names (`INFO`, `ERROR`, `DEBUG`, or intermediate
+values such as `DEBUG+3`); logger names are slash-separated. Automatic error stack
+traces and backend sampling are disabled. No-op reconciles log at `V(1)`; workload
+changes remain at info. Sigstore/Rekor retains independently configured logging
+and a transitive Zap dependency.
+
+#### Migrating logging overrides
+
+**All `--zap-*` arguments now prevent startup.** Update saved values before
+upgrading; there is no compatibility layer. For example, replace:
+
+```yaml
+controller:
+  extraArgs:
+    - --zap-devel=true
+    - --zap-log-level=debug
+```
+
+with the following to retain text output and the old `V(1)` threshold:
+
+```yaml
+controller:
+  extraArgs:
+    - --log-format=text
+    - --log-verbosity=1
+```
+
+Remove `--zap-devel=false` without replacement for default JSON/info logging.
+Log queries must use `time` instead of `ts`, `err` instead of `error`, uppercase
+severity names, and slash-separated logger names. The
+[controller logging documentation](../../README.md#controller-logging) covers the
+full output contract, object-logging safeguards, and standalone migration examples.
+
 ### Trust policy
 
 The default policy allows signed Schedkit scheduler images, matching
@@ -149,6 +209,11 @@ Enable `networkPolicy.enabled` to restrict metrics ingress to namespaces labeled
 enforce NetworkPolicy for this to have any effect.
 
 ## Upgrade and rollback
+
+Before upgrading from a Zap-based controller, remove legacy logging flags from
+`controller.extraArgs`, including stored values used with `--reuse-values`.
+Follow the [logging migration](#migrating-logging-overrides); old flags prevent
+controller startup. When rolling back, restore flags supported by the old binary.
 
 Helm **does not upgrade CRDs**. From the checkout you want to deploy, apply them
 first, then upgrade using your saved values:
