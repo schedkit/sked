@@ -145,7 +145,7 @@ Events expire; use the Scheduler's status conditions for its current state.
 
 ## Development checks
 
-With Go 1.26 and a C compiler installed, run:
+With Go 1.27 and a C compiler installed, run:
 
 ```sh
 make test
