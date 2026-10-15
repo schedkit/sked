@@ -7,7 +7,7 @@ Sked manages OCI-packaged sched_ext schedulers on Kubernetes nodes.
 With [cert-manager](https://cert-manager.io/docs/installation/) installed:
 
 ```sh
-helm repo add schedkit https://schedkit.github.io/sked
+helm repo add schedkit https://charts.schedkit.io
 helm repo update
 helm install sked schedkit/sked \
   --namespace sked-system --create-namespace \
@@ -149,17 +149,20 @@ derives both versions from the tag without changing source files.
 
 1. In **Settings → Pages → Build and deployment**, set **Source** to
    **GitHub Actions**. No manually created `gh-pages` branch is needed.
-2. If the `github-pages` environment has deployment branch/tag restrictions,
+2. Set **Custom domain** to `charts.schedkit.io`, with a DNS CNAME pointing to
+   `schedkit.github.io`. Once GitHub provisions the certificate, enable
+   **Enforce HTTPS**. A `CNAME` file on `gh-pages` is not needed for Actions deployments.
+3. If the `github-pages` environment has deployment branch/tag restrictions,
    allow your release tags.
-3. Ensure repository rules allow `GITHUB_TOKEN` to create and update `gh-pages`
+4. Ensure repository rules allow `GITHUB_TOKEN` to create and update `gh-pages`
    and create releases. The workflow requests `contents: write`, `pages: write`,
    and `id-token: write` only in the jobs that need them. No PAT is required.
 
 The deployment job checks out `gh-pages` and uploads it directly to Pages. Don't
 select Pages' **Deploy from a branch** mode: commits made with `GITHUB_TOKEN`
-don't trigger a branch-based Pages build. The repository becomes available at
-`https://schedkit.github.io/sked` after the first successful tagged release and
-Pages deployment. For a fork, use its Pages URL instead.
+don't trigger a branch-based Pages build. The Helm repository is available at
+`https://charts.schedkit.io`, with its index at `https://charts.schedkit.io/index.yaml`.
+For a fork, use its own Pages URL or custom domain instead.
 
 ## Scheduler events
 

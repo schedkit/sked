@@ -5,7 +5,7 @@
 Install [cert-manager](https://cert-manager.io/docs/installation/) first, then run:
 
 ```sh
-helm repo add schedkit https://schedkit.github.io/sked
+helm repo add schedkit https://charts.schedkit.io
 helm repo update
 helm install sked schedkit/sked \
   --namespace sked-system --create-namespace \
