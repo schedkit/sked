@@ -55,6 +55,12 @@ func init() {
 	// +kubebuilder:scaffold:scheme
 }
 
+func bindLoggingFlags(fs *flag.FlagSet) *zap.Options {
+	opts := &zap.Options{Development: false}
+	opts.BindFlags(fs)
+	return opts
+}
+
 func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
@@ -102,13 +108,10 @@ func main() {
 		"First requeue delay for a failed reconcile, doubling after every failure.")
 	flag.DurationVar(&reconcileRetryMaxDelay, "reconcile-retry-max-delay", controller.DefaultRetryMaxDelay,
 		"Upper bound on the exponential requeue delay for a failed reconcile.")
-	opts := zap.Options{
-		Development: true,
-	}
-	opts.BindFlags(flag.CommandLine)
+	opts := bindLoggingFlags(flag.CommandLine)
 	flag.Parse()
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(opts)))
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will

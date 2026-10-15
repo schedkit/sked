@@ -148,8 +148,20 @@ func TestE2E(t *testing.T) {
 			if !assert.NoError(c, err) {
 				return
 			}
-			assert.Contains(c, output, "controller-runtime.metrics\tServing metrics server",
-				"Metrics server not yet started")
+			found := false
+			for _, line := range strings.Split(output, "\n") {
+				var entry struct {
+					Logger  string `json:"logger"`
+					Message string `json:"msg"`
+					Level   string `json:"level"`
+				}
+				if json.Unmarshal([]byte(line), &entry) == nil &&
+					entry.Logger == "controller-runtime.metrics" && entry.Message == "Serving metrics server" {
+					assert.Equal(c, "info", entry.Level)
+					found = true
+				}
+			}
+			assert.True(c, found, "Metrics server has not logged its startup in JSON")
 		}, eventuallyTimeout, eventuallyTick)
 
 		cmd = exec.Command("kubectl", "run", "curl-metrics", "--restart=Never",

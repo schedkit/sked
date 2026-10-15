@@ -42,6 +42,7 @@ spec:
             - /manager
           args:
             - --leader-elect={{ .Values.controller.leaderElection }}
+            - --zap-devel=false
             - --health-probe-bind-address=:8081
             - --metrics-bind-address={{ ternary (printf ":%v" .Values.metrics.port) "0" .Values.metrics.enabled }}
             - --metrics-secure={{ .Values.metrics.secure }}
