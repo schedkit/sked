@@ -54,14 +54,14 @@ The defaults are two replicas, leader election enabled, and a PodDisruptionBudge
 with `minAvailable: 1`. Only the leader reconciles; followers wait to take over
 but still serve webhooks and use CPU and memory. Adding replicas does not increase
 reconciliation throughput. Existing scheduler DaemonSets keep running even if all
-managers are down, but reconciliation and status updates stop.
+controllers are down, but reconciliation and status updates stop.
 
 A soft topology-spread rule prefers different nodes using `kubernetes.io/hostname`.
 It allows replicas to share a node, so single-node installs still work. At least
 two schedulable nodes are needed to survive a node failure. The PDB protects
 against voluntary evictions, not node failures or direct pod deletion.
 
-Use `replicaCount` to change the number of managers. The chart rejects multiple
+Use `replicaCount` to change the number of controllers. The chart rejects multiple
 replicas with `controller.leaderElection=false`; don't bypass this through
 `controller.extraArgs`. `podDisruptionBudget.minAvailable` accepts an integer or
 a percentage such as `"50%"`. Setting it equal to the replica count blocks drains.
@@ -76,7 +76,7 @@ podDisruptionBudget:
 `topologySpreadConstraints: null` uses the default rule with this release's pod
 selector. Set it to `[]` to disable spreading, or supply a list of Kubernetes
 spread constraints to replace the rule. Custom constraints must include a
-`labelSelector` matching the manager pods. `nodeSelector`, `tolerations`, and
+`labelSelector` matching the controller pods. `nodeSelector`, `tolerations`, and
 `affinity` can also restrict placement.
 
 ### Trust policy
@@ -139,10 +139,10 @@ metrics:
 ```
 
 Set `metrics.serviceMonitor.labels` if Prometheus selects monitors by label.
-The manager uses a self-signed metrics certificate, so the default monitor skips
-certificate verification, just like the Kustomize monitor. Webhook certificates
-do not configure metrics TLS. Setting `metrics.secure=false` also removes
-metrics authentication.
+The controller uses a self-signed metrics certificate, so the default monitor
+skips certificate verification, just like the Kustomize monitor. Webhook
+certificates do not configure metrics TLS. Setting `metrics.secure=false` also
+removes metrics authentication.
 
 Enable `networkPolicy.enabled` to restrict metrics ingress to namespaces labeled
 `metrics: enabled`. Webhook ingress stays open for the API server. Your CNI must
