@@ -18,7 +18,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
-          go-version: '~1.26'
+          go-version: '~1.27'
 
       - name: Build all packages
         run: go build ./...
@@ -36,7 +36,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '~1.26'
+          go-version: '~1.27'
 
       - name: Verify generated manifests
         run: make verify-generated
@@ -73,7 +73,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '~1.26'
+          go-version: '~1.27'
 
       - name: Set up Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
