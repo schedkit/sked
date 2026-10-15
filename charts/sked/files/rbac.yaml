@@ -57,6 +57,13 @@ manager-role:
     - update
     - watch
   - apiGroups:
+    - events.k8s.io
+    resources:
+    - events
+    verbs:
+    - create
+    - patch
+  - apiGroups:
     - sked.schedkit.io
     resources:
     - schedulers

@@ -30,6 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -57,10 +58,12 @@ type SchedulerReconciler struct {
 	Policy   trust.PolicyProvider
 	Verifier trust.Verifier
 	Options  ReconcileOptions
+	Recorder events.EventRecorder
 
 	WorkloadNamespace string
 }
 
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=daemonsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=sked.schedkit.io,resources=schedulers,verbs=get;list;watch;create;update;patch;delete
@@ -177,10 +180,17 @@ func (r *SchedulerReconciler) updateStatus(
 	if err := r.Status().Update(ctx, scx); err != nil {
 		statusErr := fmt.Errorf("update scheduler status: %w", err)
 		if reconcileErr != nil {
+			r.recordStatusEvent(base, scx)
+		}
+		if !apierrors.IsConflict(err) && !apierrors.IsNotFound(err) {
+			r.recordEvent(scx, corev1.EventTypeWarning, "StatusUpdateFailed", statusErr.Error())
+		}
+		if reconcileErr != nil {
 			return errors.Join(reconcileErr, statusErr)
 		}
 		return statusErr
 	}
+	r.recordStatusEvent(base, scx)
 	return reconcileErr
 }
 
@@ -339,6 +349,9 @@ func podSpec(scx *skedv1.Scheduler, image string, conflicts []nodeConflict) core
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *SchedulerReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if r.Recorder == nil {
+		r.Recorder = mgr.GetEventRecorder("sked.schedkit.io/scheduler-controller")
+	}
 	options := r.Options.withDefaults()
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&skedv1.Scheduler{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).

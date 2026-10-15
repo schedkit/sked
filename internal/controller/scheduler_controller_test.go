@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -167,11 +168,13 @@ func TestSchedulerReconcilePopulatesStatus(t *testing.T) {
 	require.NoError(t, k8sClient.Create(ctx, resource))
 	t.Cleanup(func() { require.NoError(t, k8sClient.Delete(ctx, resource)) })
 
+	recorder := events.NewFakeRecorder(10)
 	r := &SchedulerReconciler{
 		Client:   k8sClient,
 		Scheme:   k8sClient.Scheme(),
 		Policy:   fakePolicy{trust.DefaultPolicy()},
 		Verifier: &fakeVerifier{resolved: pinned},
+		Recorder: recorder,
 	}
 
 	_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: schedulerKey})
@@ -208,6 +211,14 @@ func TestSchedulerReconcilePopulatesStatus(t *testing.T) {
 	require.Equal(t, metav1.ConditionTrue, ready.Status)
 	require.Equal(t, skedv1.ReasonDaemonSetReady, ready.Reason)
 	require.Equal(t, metav1.ConditionFalse, conditionFor(t, &updated, skedv1.SchedulerConditionDegraded).Status)
+	require.Equal(t, []string{
+		"Normal NoNodesScheduled no nodes currently match the scheduler's node selection",
+		"Normal DaemonSetReady 2/2 nodes have a ready scheduler pod",
+	}, drainEvents(recorder))
+
+	_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: schedulerKey})
+	require.NoError(t, err)
+	require.Empty(t, drainEvents(recorder))
 }
 
 func TestSchedulerReconcileReportsVerificationFailure(t *testing.T) {
@@ -225,11 +236,13 @@ func TestSchedulerReconcileReportsVerificationFailure(t *testing.T) {
 	require.NoError(t, k8sClient.Create(ctx, resource))
 	t.Cleanup(func() { require.NoError(t, k8sClient.Delete(ctx, resource)) })
 
+	recorder := events.NewFakeRecorder(10)
 	r := &SchedulerReconciler{
 		Client:   k8sClient,
 		Scheme:   k8sClient.Scheme(),
 		Policy:   fakePolicy{trust.DefaultPolicy()},
 		Verifier: &fakeVerifier{err: errors.New("no trusted signature")},
+		Recorder: recorder,
 	}
 
 	_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
@@ -247,6 +260,13 @@ func TestSchedulerReconcileReportsVerificationFailure(t *testing.T) {
 	var ds appsv1.DaemonSet
 	err = k8sClient.Get(ctx, namespacedName, &ds)
 	require.Error(t, err)
+	require.Equal(t, []string{
+		"Warning ImageVerificationFailed verify scheduler image \"" + image + "\": no trusted signature",
+	}, drainEvents(recorder))
+
+	_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: namespacedName})
+	require.ErrorContains(t, err, "verify scheduler image")
+	require.Empty(t, drainEvents(recorder))
 }
 
 func schedulerFor(name string, spec skedv1.SchedulerSpec) *skedv1.Scheduler {
@@ -522,13 +542,15 @@ func TestSchedulerReconcileSkipsLoggingMissingScheduler(t *testing.T) {
 	var logs bytes.Buffer
 	ctx = logf.IntoContext(ctx, zap.New(zap.WriteTo(&logs), zap.UseDevMode(true)))
 
-	r := &SchedulerReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+	recorder := events.NewFakeRecorder(10)
+	r := &SchedulerReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), Recorder: recorder}
 
 	_, err := r.Reconcile(ctx, reconcile.Request{
 		NamespacedName: types.NamespacedName{Name: "missing-scheduler"},
 	})
 	require.NoError(t, err)
 	require.NotContains(t, logs.String(), "unable to fetch Scheduler")
+	require.Empty(t, drainEvents(recorder))
 }
 
 func TestReleaseDaemonSet(t *testing.T) {
