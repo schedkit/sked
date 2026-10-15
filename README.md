@@ -16,6 +16,24 @@ The [chart README](charts/sked/README.md) covers configuration, upgrades, and
 uninstalling. Helm does not upgrade CRDs automatically; apply the CRDs from the
 new chart before upgrading the release.
 
+## Controller availability
+
+Helm and Kustomize deploy two controller replicas by default. Only the elected
+leader reconciles Schedulers; the other replica waits to take over. Both serve
+admission webhooks and consume resources, so extra replicas improve availability,
+not reconciliation throughput.
+
+A PodDisruptionBudget keeps at least one controller ready during voluntary
+evictions, such as a node drain. Kubernetes prefers to place controllers on
+different nodes, but allows them to share a node if necessary. Use at least two
+schedulable nodes for protection against a node failure. The budget does not
+prevent node failures or direct pod deletion.
+
+If all controllers go down, existing scheduler DaemonSets keep running.
+Reconciliation and status updates stop until a controller returns. The
+[chart README](charts/sked/README.md#availability) covers replica counts,
+disruption budgets, and placement overrides.
+
 ## Container images
 
 Images live at `ghcr.io/schedkit/sked` and support Linux on AMD64 and ARM64.
@@ -86,7 +104,7 @@ for arch in amd64 arm64; do
 done
 ```
 
-The SBOM lists packages in the image, including the manager's Go modules. The
+The SBOM lists packages in the image, including the controller's Go modules. The
 provenance records the source revision, build parameters, and base image digests.
 Check that its source revision matches the commit you intend to deploy, and
 deploy using `$ref` rather than the mutable tag.
@@ -144,7 +162,7 @@ CI reports coverage in the test job's summary, linked from the PR's Checks tab,
 and uploads `cover.out` as the `coverage` artifact. The build runs in a separate
 job, even if tests fail.
 
-## Manager flags
+## Controller flags
 
 | Flag | Default |
 | --- | --- |

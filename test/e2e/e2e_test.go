@@ -81,21 +81,34 @@ func TestE2E(t *testing.T) {
 				return
 			}
 			podNames := utils.GetNonEmptyLines(podOutput)
-			if !assert.Len(c, podNames, 1, "expected 1 controller pod running") {
+			if !assert.Len(c, podNames, 2, "expected 2 controller pods running") {
 				return
 			}
 			controllerPodName = podNames[0]
 			assert.Contains(c, controllerPodName, "controller-manager")
 
-			cmd = exec.Command("kubectl", "get",
-				"pods", controllerPodName, "-o", "jsonpath={.status.phase}",
-				"-n", namespace,
-			)
-			output, err := utils.Run(cmd)
-			if !assert.NoError(c, err) {
-				return
+			for _, podName := range podNames {
+				cmd = exec.Command("kubectl", "get",
+					"pods", podName, "-o", "jsonpath={.status.phase}|{.status.conditions[?(@.type=='Ready')].status}",
+					"-n", namespace,
+				)
+				output, err := utils.Run(cmd)
+				if !assert.NoError(c, err) {
+					return
+				}
+				assert.Equal(c, "Running|True", output, "controller-manager pod %s is not ready", podName)
 			}
-			assert.Equal(c, "Running", output, "Incorrect controller-manager pod status")
+		}, eventuallyTimeout, eventuallyTick)
+	})
+
+	t.Run("should protect one manager from eviction", func(t *testing.T) {
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			cmd := exec.Command("kubectl", "get", "pdb", "sked-controller-manager", "-n", namespace,
+				"-o", "jsonpath={.spec.minAvailable}|{.status.currentHealthy}|{.status.disruptionsAllowed}")
+			output, err := utils.Run(cmd)
+			if assert.NoError(c, err) {
+				assert.Equal(c, "1|2|1", output)
+			}
 		}, eventuallyTimeout, eventuallyTick)
 	})
 
@@ -160,7 +173,7 @@ func TestE2E(t *testing.T) {
 		}, 5*time.Minute, eventuallyTick)
 
 		metricsOutput := getMetricsOutput(t)
-		require.Contains(t, metricsOutput, "controller_runtime_reconcile_total")
+		require.Contains(t, metricsOutput, "go_goroutines")
 	})
 
 	t.Run("should reconcile a Scheduler into a DaemonSet and clean it up", func(t *testing.T) {

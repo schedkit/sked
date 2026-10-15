@@ -376,8 +376,12 @@ metrics:
 
 func TestUpgradeKeepsSelectorsAndReferences(t *testing.T) {
 	installed := render(t, "production", "operators", "")
-	upgraded := render(t, "production", "operators", "image:\n  tag: v0.2.0\nreplicaCount: 2\n", "--is-upgrade")
+	upgraded := render(t, "production", "operators", "image:\n  tag: v0.2.0\nreplicaCount: 3\n", "--is-upgrade")
 	key := "Deployment/production-sked-controller-manager"
+	require.Equal(t, float64(2), nested(t, installed[key], "spec", "replicas"))
+	require.Equal(t, float64(3), nested(t, upgraded[key], "spec", "replicas"))
+	pdb := "PodDisruptionBudget/production-sked-controller-manager"
+	require.Equal(t, nested(t, installed[pdb], "spec", "selector"), nested(t, upgraded[pdb], "spec", "selector"))
 	require.Equal(t, nested(t, installed[key], "spec", "selector"), nested(t, upgraded[key], "spec", "selector"))
 	require.Equal(t, nested(t, installed[key], "spec", "template", "metadata", "labels"),
 		nested(t, upgraded[key], "spec", "template", "metadata", "labels"))
@@ -394,6 +398,10 @@ func TestInvalidConfiguration(t *testing.T) {
 		{"webhook.certManager.enabled=false,webhook.secretName=tls", "webhook.caBundle is required"},
 		{"trustPolicy.policy=invalid", "policy"},
 		{"replicaCount=-1", "replicaCount"},
+		{"controller.leaderElection=false", "controller.leaderElection must be enabled"},
+		{"podDisruptionBudget.minAvailable=-1", "minAvailable"},
+		{"podDisruptionBudget.minAvailable=101%", "minAvailable"},
+		{"topologySpreadConstraints=invalid", "topologySpreadConstraints"},
 		{"metrics.port=70000", "port"},
 		{"controller.maxConcurrentReconciles=0", "maxConcurrentReconciles"},
 	} {

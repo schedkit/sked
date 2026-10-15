@@ -46,6 +46,7 @@ type Store struct {
 var _ interface {
 	PolicyProvider
 	Start(context.Context) error
+	NeedLeaderElection() bool
 } = (*Store)(nil)
 
 func NewStore(reader client.Reader, namespace, name, key string) *Store {
@@ -80,6 +81,10 @@ func (s *Store) Refresh(ctx context.Context) error {
 	s.policy = policy
 	s.mu.Unlock()
 	return nil
+}
+
+func (s *Store) NeedLeaderElection() bool {
+	return false
 }
 
 func (s *Store) Start(ctx context.Context) error {
