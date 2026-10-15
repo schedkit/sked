@@ -196,5 +196,6 @@ on Helm 3 and 4. To test installation, failover, eviction protection, upgrade,
 rollback, and uninstall locally, run `make test-helm-e2e`. It needs Docker and Kind,
 creates a temporary cluster with two workers, and removes it afterward.
 
-Bump `version` for chart changes and `appVersion` for a new default controller
-release. Package the chart with `helm package ./charts/sked --destination /tmp`.
+Keep `version` and `appVersion` in sync with the controller release (for example,
+`version: 0.2.0` and `appVersion: "v0.2.0"`); do not bump the chart version
+independently. Package the chart with `helm package ./charts/sked --destination /tmp`.

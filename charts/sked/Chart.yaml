@@ -3,7 +3,7 @@ name: sked
 description: Manage OCI-packaged sched_ext schedulers on Kubernetes nodes.
 type: application
 version: 0.2.0
-appVersion: "v0.1.0"
+appVersion: "v0.2.0"
 home: https://github.com/schedkit/sked
 sources:
   - https://github.com/schedkit/sked

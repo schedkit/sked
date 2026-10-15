@@ -145,6 +145,8 @@ func TestDefaultManifestsMatchKustomize(t *testing.T) {
 	}
 	require.NoError(t, yaml.Unmarshal(chartData, &chart))
 	container := manager(t, expected, "sked")
+	require.Contains(t, container["args"], "--zap-devel=false")
+	require.Contains(t, manager(t, actual, "sked")["args"], "--zap-devel=false")
 	container["image"] = "ghcr.io/schedkit/sked:" + chart.AppVersion
 	container["imagePullPolicy"] = "IfNotPresent"
 	container["ports"] = append(container["ports"].([]any), map[string]any{
@@ -213,6 +215,7 @@ controller:
   reconcileRetryMaxDelay: 2m
   extraArgs:
     - --zap-log-level=debug
+    - --zap-encoder=console
 trustPolicy:
   key: custom.yaml
   policy:
@@ -259,7 +262,7 @@ extraVolumeMounts:
 		"--trust-policy-namespace=operators", "--trust-policy-configmap-key=custom.yaml",
 		"--reconcile-timeout=30s", "--max-concurrent-reconciles=4", "--reconcile-rate-limit-qps=2.5",
 		"--reconcile-rate-limit-burst=8", "--reconcile-retry-base-delay=2s", "--reconcile-retry-max-delay=2m",
-		"--zap-log-level=debug",
+		"--zap-log-level=debug", "--zap-encoder=console",
 	} {
 		require.Contains(t, container["args"], arg)
 	}
@@ -389,6 +392,13 @@ func TestUpgradeKeepsSelectorsAndReferences(t *testing.T) {
 	for key := range installed {
 		require.Contains(t, upgraded, key)
 	}
+}
+
+func TestDevelopmentLoggingOverride(t *testing.T) {
+	docs := render(t, "sked", "operators", "controller:\n  extraArgs: [--zap-devel=true]\n")
+	args := manager(t, docs, "sked")["args"].([]any)
+	require.Contains(t, args, "--zap-devel=false")
+	require.Equal(t, "--zap-devel=true", args[len(args)-1])
 }
 
 func TestInvalidConfiguration(t *testing.T) {
