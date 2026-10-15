@@ -16,6 +16,23 @@ The [chart README](charts/sked/README.md) covers configuration, upgrades, and
 uninstalling. Helm does not upgrade CRDs automatically; apply the CRDs from the
 new chart before upgrading the release.
 
+## Manager availability
+
+Helm and Kustomize deploy two manager replicas by default. Only the elected
+leader reconciles Schedulers; the other replica waits to take over. Both serve
+admission webhooks and consume resources, so extra replicas improve availability,
+not reconciliation throughput.
+
+A PodDisruptionBudget keeps at least one manager ready during voluntary evictions,
+such as a node drain. Kubernetes prefers to place managers on different nodes,
+but allows them to share a node if necessary. Use at least two schedulable nodes
+for protection against a node failure. The budget does not prevent node failures
+or direct pod deletion.
+
+If all managers go down, existing scheduler DaemonSets keep running. Reconciliation
+and status updates stop until a manager returns. The [chart README](charts/sked/README.md#availability)
+covers replica counts, disruption budgets, and placement overrides.
+
 ## Container images
 
 Images live at `ghcr.io/schedkit/sked` and support Linux on AMD64 and ARM64.

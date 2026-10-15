@@ -1,3 +1,6 @@
+{{- if and (gt (int .Values.replicaCount) 1) (not .Values.controller.leaderElection) }}
+{{- fail "controller.leaderElection must be enabled with multiple replicas" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -116,3 +119,14 @@ spec:
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      topologySpreadConstraints:
+        {{- if kindIs "slice" .Values.topologySpreadConstraints }}
+        {{- toYaml .Values.topologySpreadConstraints | nindent 8 }}
+        {{- else }}
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "sked.selectorLabels" . | nindent 14 }}
+        {{- end }}

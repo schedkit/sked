@@ -21,12 +21,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/yaml"
 )
 
@@ -108,4 +110,35 @@ func TestStore(t *testing.T) {
 
 	require.NoError(t, s.Refresh(ctx))
 	require.Equal(t, []string{"ghcr.io/example/*"}, s.Get().AllowedImages)
+}
+
+func TestStoreRefreshesWithoutLeadership(t *testing.T) {
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "policy", Namespace: "sked-system"},
+		Data:       map[string]string{"policy.yaml": "allowedImages: [ghcr.io/example/first]\n"},
+	}
+	c := newFakeClient(t, cm).Build()
+	s := NewStore(c, cm.Namespace, cm.Name, "policy.yaml")
+	s.interval = 10 * time.Millisecond
+	var runnable manager.LeaderElectionRunnable = s
+	require.False(t, runnable.NeedLeaderElection())
+
+	ctx, cancel := context.WithCancel(t.Context())
+	stopped := make(chan error, 1)
+	go func() { stopped <- s.Start(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		require.NoError(t, <-stopped)
+	})
+	require.Eventually(t, func() bool {
+		policy := s.Get()
+		return len(policy.AllowedImages) == 1 && policy.AllowedImages[0] == "ghcr.io/example/first"
+	}, time.Second, 10*time.Millisecond)
+
+	cm.Data["policy.yaml"] = "allowedImages: [ghcr.io/example/second]\n"
+	require.NoError(t, c.Update(ctx, cm))
+	require.Eventually(t, func() bool {
+		policy := s.Get()
+		return len(policy.AllowedImages) == 1 && policy.AllowedImages[0] == "ghcr.io/example/second"
+	}, time.Second, 10*time.Millisecond)
 }
