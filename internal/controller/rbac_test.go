@@ -103,6 +103,7 @@ func TestGeneratedRBACManifests(t *testing.T) {
 	manager := findRBACManifest(t, manifests, "ClusterRole", "manager-role")
 	requireRBACRule(t, manager, "apps", "daemonsets", []string{"get", "list", "watch", "create", "update", "patch", "delete"})
 	requireRBACRule(t, manager, "", "nodes", []string{"get", "list", "watch"})
+	requireRBACRule(t, manager, "events.k8s.io", "events", []string{"create", "patch"})
 	requireRBACRule(t, manager, "", "configmaps", []string{"get", "list", "watch"})
 
 	leaderElection := findRBACManifest(t, manifests, "Role", "leader-election-role")

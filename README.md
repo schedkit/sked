@@ -96,6 +96,35 @@ deploy using `$ref` rather than the mutable tag.
 Copy the complete image index, including its attestations, and its Cosign
 signature. Use the verified digest, not a mutable tag.
 
+## Scheduler events
+
+Sked records events for rollout progress, readiness, and failures.
+Replace `example` with your Scheduler's name:
+
+```sh
+kubectl describe scheduler example
+kubectl get events -n default \
+  --field-selector involvedObject.kind=Scheduler,involvedObject.name=example \
+  --sort-by=.metadata.creationTimestamp
+```
+
+Schedulers are cluster-scoped, so their events are stored in `default`, regardless
+of the workload namespace.
+
+Event reasons:
+
+- Normal: `RolloutInProgress`, `DaemonSetReady`, and `NoNodesScheduled`.
+- Warning: `SchedulerConflict`, `NodesUnavailable`, `SpecInvalid`,
+  `ImageVerificationFailed`, `ReconcileFailed`, and `StatusUpdateFailed`.
+
+While a Scheduler is degraded, Sked records a Warning instead of a Normal event,
+even when only some nodes have a conflict. When the Scheduler recovers, Sked
+records a Normal event. Repeated reconciles and changes to pod counts alone
+don't repeat these state-change events.
+
+A `StatusUpdateFailed` warning means Sked couldn't save the Scheduler's status.
+Events expire; use the Scheduler's status conditions for its current state.
+
 ## Development checks
 
 With Go 1.26 and a C compiler installed, run:
@@ -107,9 +136,9 @@ go build ./...
 ```
 
 `make test` runs the Go tests with race detection and writes `cover.out`.
-`make coverage` checks total statement coverage against a 40% minimum. It uses
-the same non-E2E package set as `make test`, including generated code and test
-helpers. To try a higher threshold locally, run `make coverage COVERAGE_THRESHOLD=45`.
+`make coverage` checks total statement coverage against a 40% minimum. Coverage
+includes generated code and test helpers, but excludes E2E tests. To try a higher
+threshold locally, run `make coverage COVERAGE_THRESHOLD=45`.
 
 CI reports coverage in the test job's summary, linked from the PR's Checks tab,
 and uploads `cover.out` as the `coverage` artifact. The build runs in a separate
