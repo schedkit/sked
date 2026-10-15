@@ -37,6 +37,65 @@ there's no extra registry secret to set up. After the first publish, set the GHC
 package to public so clusters can pull without credentials, or keep it private
 and configure an image pull secret.
 
+### Verify signatures and attestations
+
+The publish workflow signs images from `main` and Git tags with
+[Cosign](https://docs.sigstore.dev/cosign/system_config/installation/) using
+GitHub Actions OIDC and Sigstore's public transparency log. Older images may be
+unsigned.
+
+BuildKit adds an SPDX SBOM and SLSA build provenance (`mode=max`) for AMD64 and
+ARM64. Cosign signs the image index, including those attestations. Verify the
+index with `cosign verify`, then read the attestations with Docker Buildx.
+
+Install Cosign 3.x and Docker Buildx. For private images, run
+`docker login ghcr.io` first.
+
+Replace `v1.2.3` below with the release you want to verify. The commands resolve
+the tag once, then verify that digest:
+
+```sh
+set -eu
+image=ghcr.io/schedkit/sked
+tag=v1.2.3
+digest=$(docker buildx imagetools inspect "$image:$tag" --format '{{.Manifest.Digest}}')
+ref="$image@$digest"
+identity="https://github.com/schedkit/sked/.github/workflows/publish-image.yml@refs/tags/$tag"
+
+cosign verify \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity "$identity" \
+  "$ref"
+```
+
+To verify `main` or `latest` instead, use that image tag and set `identity` to
+`https://github.com/schedkit/sked/.github/workflows/publish-image.yml@refs/heads/main`.
+A `sha-<full-commit-SHA>` tag uses the identity of the branch or Git tag that
+triggered its build. Keep the identity and issuer checks enabled.
+
+After verification passes, download each platform's SBOM and provenance:
+
+```sh
+for arch in amd64 arm64; do
+  docker buildx imagetools inspect "$ref" \
+    --format "{{ json (index .SBOM \"linux/$arch\").SPDX }}" \
+    > "sked-$arch.spdx.json"
+  docker buildx imagetools inspect "$ref" \
+    --format "{{ json (index .Provenance \"linux/$arch\").SLSA }}" \
+    > "sked-$arch.provenance.json"
+done
+```
+
+The SBOM lists packages in the image, including the manager's Go modules. The
+provenance records the source revision, build parameters, and base image digests.
+Check that its source revision matches the commit you intend to deploy, and
+deploy using `$ref` rather than the mutable tag.
+
+### Mirroring images
+
+Copy the complete image index, including its attestations, and its Cosign
+signature. Use the verified digest, not a mutable tag.
+
 ## Manager flags
 
 | Flag | Default |
