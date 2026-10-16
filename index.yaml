@@ -2,8 +2,25 @@ apiVersion: v1
 entries:
   sked:
   - apiVersion: v2
+    appVersion: v0.3.0
+    created: "2026-10-16T07:00:31.377503537Z"
+    description: Manage OCI-packaged sched_ext schedulers on Kubernetes nodes.
+    digest: b993651eb88a2438abd8af36e948d6ff30b52b513d5d46c78e18a47f490b4064
+    home: https://github.com/schedkit/sked
+    keywords:
+    - sched-ext
+    - kubernetes
+    - operator
+    name: sked
+    sources:
+    - https://github.com/schedkit/sked
+    type: application
+    urls:
+    - sked-0.3.0.tgz
+    version: 0.3.0
+  - apiVersion: v2
     appVersion: v0.2.0
-    created: "2026-10-15T17:06:32.314384031Z"
+    created: "2026-10-16T07:00:31.376787677Z"
     description: Manage OCI-packaged sched_ext schedulers on Kubernetes nodes.
     digest: 40c0daf083e7a964c69de5ef5df66e2be2cda2be831bfe1e18fa959151b17016
     home: https://github.com/schedkit/sked
@@ -18,4 +35,4 @@ entries:
     urls:
     - sked-0.2.0.tgz
     version: 0.2.0
-generated: "2026-10-15T17:06:32.313573338Z"
+generated: "2026-10-16T07:00:31.375968042Z"
