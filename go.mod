@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/go-logr/logr v1.4.4
 	github.com/google/go-containerregistry v0.22.1
-	github.com/sigstore/cosign/v3 v3.1.3
+	github.com/sigstore/cosign/v3 v3.1.4
 	github.com/sigstore/sigstore-go v1.3.0
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/time v0.16.0
@@ -104,7 +104,7 @@ require (
 	github.com/sigstore/rekor v1.5.4 // indirect
 	github.com/sigstore/rekor-tiles/v2 v2.3.0 // indirect
 	github.com/sigstore/sigstore v1.11.1 // indirect
-	github.com/sigstore/timestamp-authority/v2 v2.1.4 // indirect
+	github.com/sigstore/timestamp-authority/v2 v2.1.5 // indirect
 	github.com/sirupsen/logrus v1.10.2 // indirect
 	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
