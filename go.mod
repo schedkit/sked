@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/go-logr/logr v1.4.4
 	github.com/google/go-containerregistry v0.22.1
-	github.com/sigstore/cosign/v3 v3.1.3
+	github.com/sigstore/cosign/v3 v3.1.4
 	github.com/sigstore/sigstore-go v1.4.0
 	github.com/stretchr/testify v1.12.1
 	golang.org/x/time v0.16.0
